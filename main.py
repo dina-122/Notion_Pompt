@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from extraction import NotionLangSmithSync
 from dotenv import load_dotenv
 import os
-import uvicor
+import uvicorn
 
 # Load environment variables from .env
 load_dotenv()
