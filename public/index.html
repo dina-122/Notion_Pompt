@@ -97,7 +97,7 @@
       responseBox.className = "message";
 
       try {
-        const response = await fetch("https://notion-pompt.onrender.com/extract_prompt_to_langsmith", {
+        const response = await fetch("/extract_prompt_to_langsmith", {
           method: "POST",
           headers: {
             "Content-Type": "application/json"
