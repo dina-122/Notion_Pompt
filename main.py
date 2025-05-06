@@ -1,18 +1,23 @@
-from fastapi import FastAPI, HTTPException, Request
-
+from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from extraction import NotionLangSmithSync
-import os
 from dotenv import load_dotenv
+import os
+import uvicor
 
 # Load environment variables from .env
 load_dotenv()
 
 app = FastAPI()
 
-# Serve static HTML files from /public directory
-app.mount("/", StaticFiles(directory="public", html=True), name="static")
+# Mount static HTML directory to /static
+app.mount("/static", StaticFiles(directory="public", html=True), name="static")
+
+@app.get("/")
+async def serve_home():
+    return FileResponse("public/index.html")
 
 class PageRequest(BaseModel):
     page_id: str
