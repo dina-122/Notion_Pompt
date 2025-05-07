@@ -125,18 +125,17 @@ class NotionLangSmithSync:
         return prompt
 
     def sync_prompt(self, page_id: str):
-        # Extract Notion prompt text
         paragraphs = self.get_notion_prompt(page_id)
+        new_template_str = "\n".join(paragraphs)
         prompt_template = PromptTemplate(
             input_variables=["input"],
-            template="\n".join(paragraphs)
+            template=new_template_str
         )
 
-        # Use Notion title as prompt identifier
         prompt_identifier = self.get_page_title(page_id).strip().replace(" ", "_").lower()
 
         print(f"\nUsing prompt identifier: {prompt_identifier}")
-        print("\n".join(paragraphs))
+        print(new_template_str)
         print(f"\nTotal lines in prompt: {len(paragraphs)}")
 
         try:
@@ -146,8 +145,12 @@ class NotionLangSmithSync:
                 description="Updated prompt with content"
             )
             print(f"✅ Successfully updated existing prompt: {prompt_identifier}")
+            return {"status": "updated", "message": "Prompt updated successfully."}
+
         except Exception as e:
-            if "not found" in str(e).lower():
+            error_msg = str(e)
+
+            if "not found" in error_msg.lower():
                 print(f"Prompt {prompt_identifier} not found. Creating new prompt...")
                 self.langsmith.create_prompt(
                     prompt_identifier=prompt_identifier,
@@ -161,5 +164,11 @@ class NotionLangSmithSync:
                     description="Populated newly created prompt"
                 )
                 print(f"✅ Successfully created and populated new prompt: {prompt_identifier}")
+                return {"status": "created", "message": "Prompt created and pushed successfully."}
+
+            elif "Nothing to commit" in error_msg:
+                print(f"⚠️ No changes in prompt: {prompt_identifier}. Skipping push.")
+                return {"status": "skipped", "message": "Prompt not updated — no changes detected."}
+
             else:
                 raise e
