@@ -26,11 +26,10 @@ class PageRequest(BaseModel):
 async def extract_prompt_to_langsmith(request: PageRequest):
     try:
         syncer = NotionLangSmithSync()
-        result_message = syncer.sync_prompt(request.page_id)
-        return {"status": "success", "message": result_message}
+        result = syncer.sync_prompt(request.page_id)
+        return result  # Already returns dict with keys like "status" and "message"
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
     
 def main():
     
