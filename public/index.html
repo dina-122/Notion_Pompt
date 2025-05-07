@@ -7,6 +7,7 @@
   <style>
     body {
       font-family: Arial, sans-serif;
+      font-size: 14px;
       background-color: #f4f7fa;
       margin: 0;
       padding: 0;
@@ -18,7 +19,7 @@
 
     .container {
       background: white;
-      padding: 2rem 3rem;
+      padding: 1.5rem 2rem;
       border-radius: 12px;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
       max-width: 500px;
@@ -28,32 +29,34 @@
     h1 {
       text-align: center;
       margin-bottom: 1rem;
+      font-size: 1.2rem;
       color: #333;
     }
 
     label {
       font-weight: 600;
       display: block;
-      margin-bottom: 0.5rem;
+      margin-bottom: 0.3rem;
     }
 
-    input[type="text"] {
+    input[type="text"],
+    select {
       width: 100%;
-      padding: 0.75rem;
+      padding: 0.5rem;
       margin-bottom: 1rem;
       border: 1px solid #ccc;
       border-radius: 6px;
-      font-size: 1rem;
+      font-size: 0.9rem;
     }
 
     button {
       width: 100%;
-      padding: 0.75rem;
+      padding: 0.6rem;
       background-color: #3b82f6;
       color: white;
       border: none;
       border-radius: 6px;
-      font-size: 1rem;
+      font-size: 0.95rem;
       cursor: pointer;
     }
 
@@ -65,6 +68,7 @@
       margin-top: 1rem;
       text-align: center;
       font-weight: bold;
+      font-size: 0.9rem;
     }
 
     .success {
@@ -82,6 +86,20 @@
     <form id="promptForm">
       <label for="page_id">Notion Page ID<span style="color:red">*</span></label>
       <input type="text" id="page_id" name="page_id" required />
+
+      <label for="erp_value_option">ERP Value</label>
+      <select id="erp_value_option" name="erp_value_option" required>
+        <option value="0">Default Value</option>
+        <option value="1">@Parameter Value@</option>
+        <option value="2">{Prompt Variable}</option>
+      </select>
+
+      <label for="function_erp_option">Function Value</label>
+      <select id="function_erp_option" name="function_erp_option" required>
+        <option value="0">Default Value</option>
+        <option value="1">@Parameter Value@</option>
+      </select>
+
       <button type="submit">Send to LangSmith</button>
     </form>
     <div id="response" class="message"></div>
@@ -92,7 +110,10 @@
       event.preventDefault();
 
       const pageId = document.getElementById("page_id").value;
+      const erpValue = parseInt(document.getElementById("erp_value_option").value);
+      const functionValue = parseInt(document.getElementById("function_erp_option").value);
       const responseBox = document.getElementById("response");
+
       responseBox.textContent = "Processing...";
       responseBox.className = "message";
 
@@ -102,21 +123,25 @@
           headers: {
             "Content-Type": "application/json"
           },
-          body: JSON.stringify({ page_id: pageId })
+          body: JSON.stringify({
+            page_id: pageId,
+            erp_value_option: erpValue,
+            function_erp_option: functionValue
+          })
         });
 
         const result = await response.json();
 
         if (response.ok) {
           responseBox.textContent = result.message || "Success!";
-          responseBox.className = "message success";
+          responseBox.classList.add("success");
         } else {
           responseBox.textContent = result.detail || "An error occurred.";
-          responseBox.className = "message error";
+          responseBox.classList.add("error");
         }
       } catch (err) {
         responseBox.textContent = "Network error or API unreachable.";
-        responseBox.className = "message error";
+        responseBox.classList.add("error");
       }
     });
   </script>
