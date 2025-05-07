@@ -133,7 +133,9 @@
         const result = await response.json();
 
         if (response.ok) {
-          responseBox.textContent = result.message || "Success!";
+          responseBox.textContent = typeof result.message === "string" 
+          ? result.message 
+          : JSON.stringify(result.message);
           responseBox.classList.add("success");
         } else {
           responseBox.textContent = result.detail || "An error occurred.";
