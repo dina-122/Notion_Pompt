@@ -26,18 +26,21 @@ class PageRequest(BaseModel):
 
 @app.post("/extract_prompt_to_langsmith")
 async def extract_prompt_to_langsmith(request: PageRequest):
-    print(">>>>>>>",request)
+    print(">>>>>>>", request)
     try:
         syncer = NotionLangSmithSync()
-        result_message = syncer.sync_prompt(request.page_id, request.erp_value_option, request.function_erp_option)
+        result_message = syncer.sync_prompt(
+            request.page_id,
+            request.erp_value_option,
+            request.function_erp_option
+        )
         return {"status": "success", "message": result_message}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    
 def main():
-    
-    uvicorn.run(app, host="0.0.0.0", port=11110)
+    port = int(os.environ.get("PORT", 8000))  # Use PORT env var for Render, fallback to 8000 locally
+    uvicorn.run(app, host="0.0.0.0", port=port)
 
 if __name__ == "__main__":
     main()
