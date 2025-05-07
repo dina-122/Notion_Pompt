@@ -96,7 +96,7 @@ class NotionLangSmithSync:
           print(f"Error retrieving page title for {page_id}: {e}")
           return "{{Error}}"
 
-    def get_function_value(self, page_id, block_id, function_value_option):
+    def get_function_value(self, page_id, block_id, erp_value_option, function_value_option):
       try:
           # Retrieve the page details
           page = self.notion.pages.retrieve(page_id=page_id)
@@ -113,7 +113,7 @@ class NotionLangSmithSync:
               # Check if it's a paragraph block and contains rich text
               if block['type'] == 'paragraph' and 'rich_text' in block['paragraph']:
                   # Use the extract_text helper to get the parsed content
-                  block_content = self.extract_text(block['paragraph'])
+                  block_content = self.extract_text(block['paragraph'], erp_value_option)
 
                   # If the function_value_option is 0, look for the content after "Value if no condition is met:"
                   if function_value_option == 0:
@@ -177,7 +177,7 @@ class NotionLangSmithSync:
 
                 if "function_value" in text_lower:
                     ignored_blocks.append(block["id"])
-                    formatted_function_value = self.get_function_value(page_id, block["id"], function_value_option)
+                    formatted_function_value = self.get_function_value(page_id, block["id"], erp_value_option, function_value_option)
                     prompt.append(f"{indent}{formatted_function_value}")
                 elif "update_erp_value" in text_lower:
                     ignored_blocks.append(block["id"])
