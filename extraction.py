@@ -1,6 +1,7 @@
 from notion_client import Client as NotionClient
 from langsmith import Client as LangSmithClient
 from langchain.prompts import PromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 from dotenv import load_dotenv
 import os
 import re
@@ -16,6 +17,7 @@ class NotionLangSmithSync:
 
         self.notion = NotionClient(auth=self.notion_token)
         self.langsmith = LangSmithClient(api_key=self.langsmith_api_key)
+        self.NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID")
 
     def get_all_blocks(self, block_id, level=0):
         blocks = []
@@ -26,7 +28,7 @@ class NotionLangSmithSync:
             if block.get("has_children", False):
                 blocks.extend(self.get_all_blocks(block["id"], level + 1))
         return blocks
-    
+
     def get_page_title(self, page_id: str) -> str:
         try:
             page = self.notion.pages.retrieve(page_id=page_id)
@@ -34,7 +36,7 @@ class NotionLangSmithSync:
             for prop in page["properties"].values():
                 if prop["type"] == "title":
                     raw_title = "".join(part["text"]["content"] for part in prop["title"])
-                    
+
                     # Sanitize the title for use as a prompt_identifier
                     sanitized = unicodedata.normalize("NFKD", raw_title).encode("ascii", "ignore").decode("ascii")
                     sanitized = sanitized.lower()
@@ -48,8 +50,91 @@ class NotionLangSmithSync:
             print(f"Error retrieving or sanitizing title for page {page_id}: {e}")
             return "error_prompt"
 
+    def get_notion_variable_value(self, database_id, variable_name):
+      response = self.notion.databases.query(database_id=database_id)
+      value = ""
 
-    def extract_text(self, block_content):
+      for row in response["results"]:
+          props = row["properties"]
+
+          # Handle Name field safely
+          name_prop = props.get("Name", {}).get("title", [])
+          if name_prop:
+              name = name_prop[0].get("plain_text", "").strip()
+          else:
+              name = ""  # Handle missing Name property
+
+          # Handle Default Value field safely
+          default_value_prop = props.get("Default Value", {}).get("rich_text", [])
+          if default_value_prop:
+              default_value = default_value_prop[0].get("plain_text", "").strip()
+          else:
+              default_value = ""  # Handle missing Default Value property
+
+          if name == variable_name:
+              value = default_value
+
+      return value
+
+    def get_erp_value(self, page_id, erp_value_option):
+      try:
+          page = self.notion.pages.retrieve(page_id=page_id)
+          print(page)
+          val = "Untitled Page"
+          # Access the title under the specific property "Parameter Name"
+          title_prop = page["properties"].get("Name")
+          if title_prop and title_prop.get("type") == "title":
+              title_parts = title_prop["title"]
+              val =  "".join(part["text"]["content"] for part in title_parts)
+          if erp_value_option == 0:
+            return self.get_notion_variable_value(self.NOTION_DATABASE_ID, val)
+          elif erp_value_option == 1:
+            return f"@{val}@"
+          return f"{{{val}}}"
+
+      except Exception as e:
+          print(f"Error retrieving page title for {page_id}: {e}")
+          return "{{Error}}"
+
+    def get_function_value(self, page_id, block_id, function_value_option):
+      try:
+          # Retrieve the page details
+          page = self.notion.pages.retrieve(page_id=page_id)
+          # print(page)
+
+          # Fetch all blocks for the given block_id
+          blocks = self.get_all_blocks(block_id)
+
+          # Initialize the value to be returned
+          val = "@Function Name@"
+
+          # Iterate through the blocks and check the condition based on the function_value_option
+          for block in blocks:
+              # Check if it's a paragraph block and contains rich text
+              if block['type'] == 'paragraph' and 'rich_text' in block['paragraph']:
+                  # Use the extract_text helper to get the parsed content
+                  block_content = self.extract_text(block['paragraph'])
+
+                  # If the function_value_option is 0, look for the content after "Value if no condition is met:"
+                  if function_value_option == 0:
+                      if block_content.startswith("Value if no condition is met:"):
+                          val = block_content.split("Value if no condition is met:")[1].strip()
+                          return val  # Return the extracted value
+
+                  # If the function_value_option is 1, look for the content after "Name*:"
+                  elif function_value_option == 1:
+                      if block_content.startswith("Name*:"):
+                          val = block_content.split("Name*:")[1].strip()
+                          return f"@{val}@"  # Return the extracted value
+
+          # If no value is found based on the options, return a default value
+          return val
+
+      except Exception as e:
+          print(f"Error retrieving function value for {page_id}: {e}")
+          return "@Error@"
+
+    def extract_text(self, block_content, erp_value_option):
         try:
             parts = []
             for rt in block_content["rich_text"]:
@@ -58,11 +143,12 @@ class NotionLangSmithSync:
                     if mention.get("type") == "page":
                         page_id = mention["page"].get("id")
                         if page_id:
-                            page_title = self.get_page_title(page_id)
-                            parts.append(f"{{{page_title}}}")
+                            formatted_erp_value = self.get_erp_value(page_id, erp_value_option)
+                            parts.append(formatted_erp_value)
                         else:
                             parts.append("{Unknown Page}")
                     else:
+                        # Handle other mention types if needed
                         parts.append("{Mention}")
                 elif rt.get("type") == "text":
                     parts.append(rt["text"].get("content", ""))
@@ -70,7 +156,7 @@ class NotionLangSmithSync:
         except (KeyError, IndexError, TypeError):
             return ""
 
-    def get_notion_prompt(self, page_id):
+    def get_notion_prompt(self, page_id, erp_value_option, function_value_option):
         all_blocks = self.get_all_blocks(page_id)
         prompt = []
         list_counters = {}
@@ -86,16 +172,13 @@ class NotionLangSmithSync:
                 continue
 
             if block_type == "toggle":
-                text = self.extract_text(block["toggle"])
+                text = self.extract_text(block["toggle"], erp_value_option)
                 text_lower = text.lower()
 
                 if "function_value" in text_lower:
                     ignored_blocks.append(block["id"])
-                    if ":" in text:
-                        name = text.split(":", 1)[1].strip()
-                        prompt.append(f"{indent}@{name}@")
-                    else:
-                        prompt.append(f"{indent}{text}")
+                    formatted_function_value = self.get_function_value(page_id, block["id"], function_value_option)
+                    prompt.append(f"{indent}{formatted_function_value}")
                 elif "update_erp_value" in text_lower:
                     ignored_blocks.append(block["id"])
                 continue
@@ -104,7 +187,7 @@ class NotionLangSmithSync:
             if not block_data:
                 continue
 
-            text = self.extract_text(block_data)
+            text = self.extract_text(block_data, erp_value_option)
             if not text:
                 continue
 
@@ -124,27 +207,27 @@ class NotionLangSmithSync:
 
         return prompt
 
-    def sync_prompt(self, page_id: str):
-        paragraphs = self.get_notion_prompt(page_id)
-        new_template_str = "\n".join(paragraphs)
-        prompt_template = PromptTemplate(
-            input_variables=["input"],
-            template=new_template_str
-        )
+    def sync_prompt(self, page_id: str, erp_value_option: int, function_value_option: int):
+        paragraphs = self.get_notion_prompt(page_id, erp_value_option, function_value_option)
+        system_message = "\n".join(paragraphs)
+        chat_prompt_template = ChatPromptTemplate([
+          ("system", system_message),
+          ("user", "{Conversation}"),
+        ])
 
         prompt_identifier = self.get_page_title(page_id).strip().replace(" ", "_").lower()
 
         print(f"\nUsing prompt identifier: {prompt_identifier}")
-        print(new_template_str)
+        print(system_message)
         print(f"\nTotal lines in prompt: {len(paragraphs)}")
 
         try:
             self.langsmith.push_prompt(
                 prompt_identifier=prompt_identifier,
-                object=prompt_template,
+                object=chat_prompt_template,
                 description="Updated prompt with content"
             )
-            print(f"✅ Successfully updated existing prompt: {prompt_identifier}")
+            print(f" Successfully updated existing prompt: {prompt_identifier}")
             return {"status": "updated", "message": "Prompt updated successfully."}
 
         except Exception as e:
@@ -160,14 +243,14 @@ class NotionLangSmithSync:
                 )
                 self.langsmith.push_prompt(
                     prompt_identifier=prompt_identifier,
-                    object=prompt_template,
+                    object=chat_prompt_template,
                     description="Populated newly created prompt"
                 )
-                print(f"✅ Successfully created and populated new prompt: {prompt_identifier}")
+                print(f" Successfully created and populated new prompt: {prompt_identifier}")
                 return {"status": "created", "message": "Prompt created and pushed successfully."}
 
             elif "Nothing to commit" in error_msg:
-                print(f"⚠️ No changes in prompt: {prompt_identifier}. Skipping push.")
+                print(f" No changes in prompt: {prompt_identifier}. Skipping push.")
                 return {"status": "skipped", "message": "Prompt not updated — no changes detected."}
 
             else:
