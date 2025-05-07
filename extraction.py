@@ -77,6 +77,7 @@ class NotionLangSmithSync:
       return value
 
     def get_erp_value(self, page_id, erp_value_option):
+      
       try:
           page = self.notion.pages.retrieve(page_id=page_id)
           print(page)
@@ -86,11 +87,16 @@ class NotionLangSmithSync:
           if title_prop and title_prop.get("type") == "title":
               title_parts = title_prop["title"]
               val =  "".join(part["text"]["content"] for part in title_parts)
+          
           if erp_value_option == 0:
+            
             return self.get_notion_variable_value(self.NOTION_DATABASE_ID, val)
           elif erp_value_option == 1:
+           
             return f"@{val}@"
-          return f"{{{val}}}"
+          else:
+            return f"{{{val}}}"
+          
 
       except Exception as e:
           print(f"Error retrieving page title for {page_id}: {e}")
@@ -135,15 +141,19 @@ class NotionLangSmithSync:
           return "@Error@"
 
     def extract_text(self, block_content, erp_value_option):
+        
         try:
             parts = []
             for rt in block_content["rich_text"]:
                 if rt.get("type") == "mention":
+                    
                     mention = rt.get("mention", {})
                     if mention.get("type") == "page":
                         page_id = mention["page"].get("id")
                         if page_id:
+                            
                             formatted_erp_value = self.get_erp_value(page_id, erp_value_option)
+                            
                             parts.append(formatted_erp_value)
                         else:
                             parts.append("{Unknown Page}")
@@ -157,6 +167,7 @@ class NotionLangSmithSync:
             return ""
 
     def get_notion_prompt(self, page_id, erp_value_option, function_value_option):
+        
         all_blocks = self.get_all_blocks(page_id)
         prompt = []
         list_counters = {}
@@ -191,8 +202,7 @@ class NotionLangSmithSync:
             if not text:
                 continue
 
-            text = re.sub(r"\{(\w+)\}", r"@\1@", text)
-
+            
             if block_type == "bulleted_list_item":
                 formatted = f"{indent}- {text}"
             elif block_type == "numbered_list_item":
@@ -208,6 +218,7 @@ class NotionLangSmithSync:
         return prompt
 
     def sync_prompt(self, page_id: str, erp_value_option: int, function_value_option: int):
+        
         paragraphs = self.get_notion_prompt(page_id, erp_value_option, function_value_option)
         system_message = "\n".join(paragraphs)
         chat_prompt_template = ChatPromptTemplate([
