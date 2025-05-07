@@ -108,15 +108,15 @@
         const result = await response.json();
 
         if (response.ok) {
-          responseBox.textContent = result.message;
-          responseBox.classList.add("success");
+          responseBox.textContent = result.message || "Success!";
+          responseBox.className = "message success";
         } else {
           responseBox.textContent = result.detail || "An error occurred.";
-          responseBox.classList.add("error");
+          responseBox.className = "message error";
         }
       } catch (err) {
         responseBox.textContent = "Network error or API unreachable.";
-        responseBox.classList.add("error");
+        responseBox.className = "message error";
       }
     });
   </script>
