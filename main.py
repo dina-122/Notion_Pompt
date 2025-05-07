@@ -26,6 +26,7 @@ class PageRequest(BaseModel):
 
 @app.post("/extract_prompt_to_langsmith")
 async def extract_prompt_to_langsmith(request: PageRequest):
+    print(">>>>>>>",request)
     try:
         syncer = NotionLangSmithSync()
         result_message = syncer.sync_prompt(request.page_id, request.erp_value_option, request.function_erp_option)
