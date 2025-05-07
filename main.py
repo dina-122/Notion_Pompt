@@ -21,15 +21,18 @@ async def serve_home():
 
 class PageRequest(BaseModel):
     page_id: str
+    erp_value_option: int
+    function_erp_option: int
 
 @app.post("/extract_prompt_to_langsmith")
 async def extract_prompt_to_langsmith(request: PageRequest):
     try:
         syncer = NotionLangSmithSync()
-        result = syncer.sync_prompt(request.page_id)
-        return result  # Already returns dict with keys like "status" and "message"
+        result_message = syncer.sync_prompt(request.page_id, request.erp_value_option, request.function_erp_option)
+        return {"status": "success", "message": result_message}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
     
 def main():
     
@@ -37,4 +40,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
