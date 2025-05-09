@@ -11,10 +11,8 @@ import unicodedata
 class NotionLangSmithSync:
     def __init__(self):
         load_dotenv()
-
         self.notion_token = os.getenv("NOTION_TOKEN")
         self.langsmith_api_key = os.getenv("LANGCHAIN_API_KEY")
-
         self.notion = NotionClient(auth=self.notion_token)
         self.langsmith = LangSmithClient(api_key=self.langsmith_api_key)
         self.NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID")
@@ -32,133 +30,108 @@ class NotionLangSmithSync:
     def get_page_title(self, page_id: str) -> str:
         try:
             page = self.notion.pages.retrieve(page_id=page_id)
-            # Extract the default Notion page title
             for prop in page["properties"].values():
                 if prop["type"] == "title":
                     raw_title = "".join(part["text"]["content"] for part in prop["title"])
-
-                    # Sanitize the title for use as a prompt_identifier
                     sanitized = unicodedata.normalize("NFKD", raw_title).encode("ascii", "ignore").decode("ascii")
                     sanitized = sanitized.lower()
                     sanitized = re.sub(r'[^a-z0-9_-]', '_', sanitized)
                     sanitized = re.sub(r'^[^a-z]+', '', sanitized)
                     return sanitized or "default_prompt"
-
             return "untitled_prompt"
-
         except Exception as e:
             print(f"Error retrieving or sanitizing title for page {page_id}: {e}")
             return "error_prompt"
 
     def get_notion_variable_value(self, database_id, variable_name):
-      response = self.notion.databases.query(database_id=database_id)
-      value = ""
-
-      for row in response["results"]:
-          props = row["properties"]
-
-          # Handle Name field safely
-          name_prop = props.get("Name", {}).get("title", [])
-          if name_prop:
-              name = name_prop[0].get("plain_text", "").strip()
-          else:
-              name = ""  # Handle missing Name property
-
-          # Handle Default Value field safely
-          default_value_prop = props.get("Default Value", {}).get("rich_text", [])
-          if default_value_prop:
-              default_value = default_value_prop[0].get("plain_text", "").strip()
-          else:
-              default_value = ""  # Handle missing Default Value property
-
-          if name == variable_name:
-              value = default_value
-
-      return value
+        response = self.notion.databases.query(database_id=database_id)
+        value = ""
+        for row in response["results"]:
+            props = row["properties"]
+            name_prop = props.get("Name", {}).get("title", [])
+            name = name_prop[0].get("plain_text", "").strip() if name_prop else ""
+            default_value_prop = props.get("Default Value", {}).get("rich_text", [])
+            default_value = default_value_prop[0].get("plain_text", "").strip() if default_value_prop else ""
+            if name == variable_name:
+                value = default_value
+        return value
 
     def get_erp_value(self, page_id, erp_value_option):
-      
-      try:
-          page = self.notion.pages.retrieve(page_id=page_id)
-          print(page)
-          val = "Untitled Page"
-          # Access the title under the specific property "Parameter Name"
-          title_prop = page["properties"].get("Name")
-          if title_prop and title_prop.get("type") == "title":
-              title_parts = title_prop["title"]
-              val =  "".join(part["text"]["content"] for part in title_parts)
-          
-          if erp_value_option == 0:
-            
-            return self.get_notion_variable_value(self.NOTION_DATABASE_ID, val)
-          elif erp_value_option == 1:
-           
-            return f"@{val}@"
-          else:
-            return f"{{{val}}}"
-          
-
-      except Exception as e:
-          print(f"Error retrieving page title for {page_id}: {e}")
-          return "{{Error}}"
+        try:
+            page = self.notion.pages.retrieve(page_id=page_id)
+            val = "Untitled Page"
+            title_prop = page["properties"].get("Name")
+            if title_prop and title_prop.get("type") == "title":
+                title_parts = title_prop["title"]
+                val = "".join(part["text"]["content"] for part in title_parts)
+            if erp_value_option == 0:
+                return self.get_notion_variable_value(self.NOTION_DATABASE_ID, val)
+            elif erp_value_option == 1:
+                return f"@{val}@"
+            else:
+                return f"{{{val}}}"
+        except Exception as e:
+            print(f"Error retrieving page title for {page_id}: {e}")
+            return "{{Error}}"
 
     def get_function_value(self, page_id, block_id, erp_value_option, function_value_option):
-      try:
-          # Retrieve the page details
-          page = self.notion.pages.retrieve(page_id=page_id)
-          # print(page)
+        try:
+            page = self.notion.pages.retrieve(page_id=page_id)
+            blocks = self.get_all_blocks(block_id)
+            val = "@Function Name@"
 
-          # Fetch all blocks for the given block_id
-          blocks = self.get_all_blocks(block_id)
+            for block in blocks:
+                if block['type'] == 'paragraph' and 'rich_text' in block['paragraph']:
+                    block_content = self.extract_text(block['paragraph'], erp_value_option)
 
-          # Initialize the value to be returned
-          val = "@Function Name@"
+                    if function_value_option == 0:
+                        if block_content.startswith("Value if no condition is met:"):
+                            val = block_content.split("Value if no condition is met:")[1].strip()
+                            return val
 
-          # Iterate through the blocks and check the condition based on the function_value_option
-          for block in blocks:
-              # Check if it's a paragraph block and contains rich text
-              if block['type'] == 'paragraph' and 'rich_text' in block['paragraph']:
-                  # Use the extract_text helper to get the parsed content
-                  block_content = self.extract_text(block['paragraph'], erp_value_option)
+                    elif function_value_option == 1:
+                        if block_content.startswith("Name*:"):
+                            val = block_content.split("Name*:")[1].strip()
+                            return f"@{val}@"
 
-                  # If the function_value_option is 0, look for the content after "Value if no condition is met:"
-                  if function_value_option == 0:
-                      if block_content.startswith("Value if no condition is met:"):
-                          val = block_content.split("Value if no condition is met:")[1].strip()
-                          return val  # Return the extracted value
+            # ✅ Final logic for option 2: collect all brown background child blocks
+            if function_value_option == 2:
+                for block in blocks:
+                    if block['type'] == 'callout' and block.get('has_children'):
+                        children = self.notion.blocks.children.list(block['id']).get("results", [])
+                        brown_texts = []
+                        for child in children:
+                            if (
+                                child['type'] == 'paragraph'
+                                and 'paragraph' in child
+                                and child['paragraph'].get('color') == 'brown_background'
+                            ):
+                                text = self.extract_text(child['paragraph'], erp_value_option).strip()
+                                if text:
+                                    brown_texts.append(text)
+                        if brown_texts:
+                            return " ".join(brown_texts)
+                        return "{No brown background paragraphs found in callout}"
 
-                  # If the function_value_option is 1, look for the content after "Name*:"
-                  elif function_value_option == 1:
-                      if block_content.startswith("Name*:"):
-                          val = block_content.split("Name*:")[1].strip()
-                          return f"@{val}@"  # Return the extracted value
-
-          # If no value is found based on the options, return a default value
-          return val
-
-      except Exception as e:
-          print(f"Error retrieving function value for {page_id}: {e}")
-          return "@Error@"
+            return val
+        except Exception as e:
+            print(f"Error retrieving function value for {page_id}: {e}")
+            return "@Error@"
 
     def extract_text(self, block_content, erp_value_option):
-        
         try:
             parts = []
             for rt in block_content["rich_text"]:
                 if rt.get("type") == "mention":
-                    
                     mention = rt.get("mention", {})
                     if mention.get("type") == "page":
                         page_id = mention["page"].get("id")
                         if page_id:
-                            
                             formatted_erp_value = self.get_erp_value(page_id, erp_value_option)
-                            
                             parts.append(formatted_erp_value)
                         else:
                             parts.append("{Unknown Page}")
                     else:
-                        # Handle other mention types if needed
                         parts.append("{Mention}")
                 elif rt.get("type") == "text":
                     parts.append(rt["text"].get("content", ""))
@@ -167,7 +140,6 @@ class NotionLangSmithSync:
             return ""
 
     def get_notion_prompt(self, page_id, erp_value_option, function_value_option):
-        
         all_blocks = self.get_all_blocks(page_id)
         prompt = []
         list_counters = {}
@@ -202,7 +174,6 @@ class NotionLangSmithSync:
             if not text:
                 continue
 
-            
             if block_type == "bulleted_list_item":
                 formatted = f"{indent}- {text}"
             elif block_type == "numbered_list_item":
@@ -218,12 +189,11 @@ class NotionLangSmithSync:
         return prompt
 
     def sync_prompt(self, page_id: str, erp_value_option: int, function_value_option: int):
-        
         paragraphs = self.get_notion_prompt(page_id, erp_value_option, function_value_option)
         system_message = "\n".join(paragraphs)
         chat_prompt_template = ChatPromptTemplate([
-          ("system", system_message),
-          ("user", "{Conversation}"),
+            ("system", system_message),
+            ("user", "{Conversation}"),
         ])
 
         prompt_identifier = self.get_page_title(page_id).strip().replace(" ", "_").lower()
