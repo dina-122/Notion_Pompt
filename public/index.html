@@ -100,49 +100,65 @@
         <option value="Word">Word docx</option>
       </select>
 
-      <!-- Common Fields -->
-      <div id="commonFields" class="hidden">
+      <!-- ERP Fields -->
+      <div id="erpFields" class="hidden">
         <label for="prompt_name">Prompt Name</label>
         <input type="text" id="prompt_name" name="prompt_name" />
 
         <label for="prompt_id">Prompt ID</label>
         <input type="text" id="prompt_id" name="prompt_id" />
+
+        <label for="erp_value_name">ERP Value</label>
+        <select id="erp_value_name" required>
+          <option value="" disabled selected>@ERP_Value_Name@</option>
+        </select>
+
+        <label for="function_value_name">Function Value</label>
+        <select id="function_value_name" required>
+          <option value="" disabled selected>@Function_Value_Name@</option>
+        </select>
       </div>
 
-      <!-- LangSmith-specific -->
+      <!-- LangSmith Fields -->
       <div id="langsmithFields" class="hidden">
+        <label for="prompt_name">Prompt Name</label>
+        <input type="text" id="prompt_name" name="prompt_name" />
+
+        <label for="prompt_id">Prompt ID</label>
+        <input type="text" id="prompt_id" name="prompt_id" />
+
         <label for="erp_value_option">ERP Value</label>
         <select id="erp_value_option">
           <option value="" disabled selected>Select an option</option>
-          <option value="0">Default Value - Retrieved from Notion Database</option>
+          <option value="0">Default Value - It will be automatically retrieved from ERP Values on Notion</option>
           <option value="1">@ERP_Value@</option>
-          <option value="2">{Variable} – Replace manually in LangSmith</option>
+          <option value="2">{Variable} – You have to fill it manually on LangSmith</option>
         </select>
 
         <label for="function_value_option">Function Value</label>
         <select id="function_value_option">
           <option value="" disabled selected>Select an option</option>
-          <option value="0">Default Value</option>
+          <option value="0">Default Value - Value if no condition is met</option>
           <option value="1">@Function_Value@</option>
-          <option value="2">First Condition Value</option>
+          <option value="2">First Condition Value - Value if first condition is met</option>
         </select>
       </div>
 
-      <!-- Word-specific -->
+      <!-- Word Fields -->
       <div id="wordFields" class="hidden">
         <label for="word_erp_value">ERP Value</label>
         <select id="word_erp_value">
           <option value="" disabled selected>Select an option</option>
-          <option value="0">Default Value - Retrieved from Notion Database</option>
+          <option value="0">Default Value - It will be automatically retrieved from ERP Values on Notion</option>
           <option value="1">@ERP_Value@</option>
         </select>
 
         <label for="word_function_value">Function Value</label>
         <select id="word_function_value">
           <option value="" disabled selected>Select an option</option>
-          <option value="0">Default Value</option>
+          <option value="0">Default Value - Value if no condition is met</option>
           <option value="1">Business Description</option>
-          <option value="2">No changes - extract as-is</option>
+          <option value="2">No changes - extract as is</option>
         </select>
 
         <label for="word_update_erp">Update ERP Value</label>
@@ -150,7 +166,7 @@
           <option value="" disabled selected>Select an option</option>
           <option value="0">Default Value</option>
           <option value="1">Business Description</option>
-          <option value="2">No changes - extract as-is</option>
+          <option value="2">No changes - extract as is</option>
           <option value="3">Remove all</option>
         </select>
       </div>
@@ -162,22 +178,20 @@
 
   <script>
     const extractOption = document.getElementById("extract_option");
-    const commonFields = document.getElementById("commonFields");
+    const erpFields = document.getElementById("erpFields");
     const langsmithFields = document.getElementById("langsmithFields");
     const wordFields = document.getElementById("wordFields");
 
     extractOption.addEventListener("change", () => {
       const value = extractOption.value;
 
-      // Reset visibility
-      commonFields.classList.add("hidden");
+      erpFields.classList.add("hidden");
       langsmithFields.classList.add("hidden");
       wordFields.classList.add("hidden");
 
       if (value === "ERP") {
-        commonFields.classList.remove("hidden");
+        erpFields.classList.remove("hidden");
       } else if (value === "Langsmith") {
-        commonFields.classList.remove("hidden");
         langsmithFields.classList.remove("hidden");
       } else if (value === "Word") {
         wordFields.classList.remove("hidden");
@@ -196,6 +210,8 @@
       if (extractTo === "ERP") {
         payload.prompt_name = document.getElementById("prompt_name").value;
         payload.prompt_id = document.getElementById("prompt_id").value;
+        payload.erp_value_name = document.getElementById("erp_value_name").value;
+        payload.function_value_name = document.getElementById("function_value_name").value;
         endpoint = "/extract_prompt_to_erp";
       } else if (extractTo === "Langsmith") {
         payload.prompt_name = document.getElementById("prompt_name").value;
