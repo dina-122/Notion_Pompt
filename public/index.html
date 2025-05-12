@@ -4,86 +4,94 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>EXTRACT PROMPT</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      font-size: 12px;
-      background-color: #f4f7fa;
-      margin: 0;
-      padding: 0;
-      display: flex;
-      height: 100vh;
-      align-items: center;
-      justify-content: center;
-    }
+<style>
+  body {    
+    font-family: Arial, sans-serif;
+    font-size: 12px;
+    background-color: #f4f7fa;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    height: 100vh;
+    align-items: center;
+    justify-content: center;
+    overflow: visible !important; /* Allow dropdowns to open outside viewport */
+  }
 
-    .container {
-      background: white;
-      padding: 1rem 1.5rem;
-      border-radius: 10px;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-      max-width: 480px;
-      width: 100%;
-    }
+  html {
+    overflow: visible !important; /* Prevent clipping */
+  }
 
-    h1 {
-      text-align: center;
-      margin-bottom: 1rem;
-      font-size: 1rem;
-      color: #333;
-    }
+  .container {
+    background: white;
+    padding: 1rem 1.5rem;
+    border-radius: 10px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    max-width: 480px;
+    width: 100%;
+    overflow: visible; /* Ensure dropdowns are not clipped by container */
+  }
 
-    label {
-      font-weight: 600;
-      display: block;
-      margin-bottom: 0.3rem;
-      font-size: 11px;
-    }
+  h1 {
+    text-align: center;
+    margin-bottom: 1rem;
+    font-size: 1rem;
+    color: #333;
+  }
 
-    input[type="text"],
-    select {
-      width: 100%;
-      padding: 0.4rem;
-      margin-bottom: 0.8rem;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      font-size: 11px;
-    }
+  label {
+    font-weight: 600;
+    display: block;
+    margin-bottom: 0.3rem;
+    font-size: 11px;
+  }
 
-    button {
-      width: 100%;
-      padding: 0.5rem;
-      background-color: #3b82f6;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      font-size: 11px;
-      cursor: pointer;
-    }
+  input[type="text"],
+  select {
+    width: 100%;
+    padding: 0.4rem;
+    margin-bottom: 0.8rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 11px;
+    max-height: 200px;     /* Limit height of dropdown */
+    overflow-y: auto;      /* Enable vertical scroll if needed */
+  }
 
-    button:hover {
-      background-color: #2563eb;
-    }
+  button {
+    width: 100%;
+    padding: 0.5rem;
+    background-color: #3b82f6;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+  }
 
-    .message {
-      margin-top: 0.8rem;
-      text-align: center;
-      font-weight: bold;
-      font-size: 11px;
-    }
+  button:hover {
+    background-color: #2563eb;
+  }
 
-    .success {
-      color: green;
-    }
+  .message {
+    margin-top: 0.8rem;
+    text-align: center;
+    font-weight: bold;
+    font-size: 11px;
+  }
 
-    .error {
-      color: red;
-    }
+  .success {
+    color: green;
+  }
 
-    .hidden {
-      display: none;
-    }
-  </style>
+  .error {
+    color: red;
+  }
+
+  .hidden {
+    display: none;
+  }
+</style>
 </head>
 <body>
   <div class="container">
@@ -121,11 +129,10 @@
 
       <!-- LangSmith Fields -->
       <div id="langsmithFields" class="hidden">
-        <label for="prompt_name">Prompt Name</label>
-        <input type="text" id="prompt_name" name="prompt_name" />
-
-        <label for="prompt_id">Prompt ID</label>
-        <input type="text" id="prompt_id" name="prompt_id" />
+        <label id="prompt_name_label" for="prompt_dropdown">Prompt Name - ID</label>
+        <select id="prompt_dropdown">
+          <option value="" disabled selected>Loading prompt options...</option>
+        </select>
 
         <label for="erp_value_option">ERP Value</label>
         <select id="erp_value_option">
@@ -142,6 +149,14 @@
           <option value="1">@Function_Value@</option>
           <option value="2">First Condition</option>
         </select>
+
+        <div style="margin-top: 0.5rem;">
+          <input type="checkbox" id="overwrite_existing" />
+          <label for="overwrite_existing" style="font-weight: normal; display: inline;">
+            Please note that updating the existing prompt will overwrite it and delete already created tools.
+            If you wish to do that, check this box. Otherwise, a .txt file will be generated to manually update LangSmith.
+          </label>
+        </div>
       </div>
 
       <!-- Word Fields -->
@@ -181,17 +196,51 @@
     const erpFields = document.getElementById("erpFields");
     const langsmithFields = document.getElementById("langsmithFields");
     const wordFields = document.getElementById("wordFields");
+    const promptDropdown = document.getElementById("prompt_dropdown");
+    const promptLabel = document.getElementById("prompt_name_label");
 
-    extractOption.addEventListener("change", () => {
+    extractOption.addEventListener("change", async () => {
       erpFields.classList.add("hidden");
       langsmithFields.classList.add("hidden");
       wordFields.classList.add("hidden");
 
       const value = parseInt(extractOption.value);
+      const department = new URLSearchParams(window.location.search).get("department");
+
       if (value === 0) {
         erpFields.classList.remove("hidden");
+
       } else if (value === 1) {
         langsmithFields.classList.remove("hidden");
+
+        // Reset dropdown
+        promptDropdown.innerHTML = "";
+        const loadingOption = document.createElement("option");
+        loadingOption.value = "";
+        loadingOption.textContent = "Loading prompt options...";
+        promptDropdown.appendChild(loadingOption);
+
+        if (department) {
+          try {
+            const res = await fetch(`/get_prompts_name_id?department=${department}`);
+            const data = await res.json();
+
+            promptDropdown.innerHTML = "";
+            data.prompts.forEach(entry => {
+              const opt = document.createElement("option");
+              opt.value = entry;
+              opt.innerText = entry;
+              promptDropdown.appendChild(opt);
+            });
+          } catch (e) {
+            console.error("Failed to fetch prompts:", e);
+            promptDropdown.innerHTML = "";
+            const errorOption = document.createElement("option");
+            errorOption.value = "";
+            errorOption.textContent = "Error loading prompts.";
+            promptDropdown.appendChild(errorOption);
+          }
+        }
       } else if (value === 2) {
         wordFields.classList.remove("hidden");
       }
@@ -203,6 +252,7 @@
       const pageId = document.getElementById("page_id").value;
       const extractionOption = parseInt(document.getElementById("extract_option").value);
       const responseBox = document.getElementById("response");
+      const department = new URLSearchParams(window.location.search).get("department");
 
       let payload = {
         page_id: pageId,
@@ -219,19 +269,25 @@
           payload.function_value_name = document.getElementById("function_value_name").value;
           endpoint = "/extract_prompt_to_erp";
           break;
+
         case 1:
-          payload.prompt_name = document.getElementById("prompt_name").value;
-          payload.prompt_id = document.getElementById("prompt_id").value;
+          const selected = document.getElementById("prompt_dropdown").value;
+          const [namePart, idPart] = selected.split(" - ");
+          payload.prompt_name = namePart.trim();
+          payload.prompt_id = idPart.trim();
           payload.erp_value_option = parseInt(document.getElementById("erp_value_option").value);
           payload.function_erp_option = parseInt(document.getElementById("function_value_option").value);
-          endpoint = "/extract_prompt_to_langsmith";
+          payload.overwrite_existing = document.getElementById("overwrite_existing").checked;
+          endpoint = `/extract_prompt_to_langsmith?department=${department}`;
           break;
+
         case 2:
           payload.erp_value_option = parseInt(document.getElementById("word_erp_value").value);
           payload.function_value_option = parseInt(document.getElementById("word_function_value").value);
           payload.updated_erp_option = parseInt(document.getElementById("word_update_erp").value);
           endpoint = "/extract_prompt_to_word";
           break;
+
         default:
           responseBox.textContent = "Invalid extraction option selected.";
           responseBox.className = "message error";

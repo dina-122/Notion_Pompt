@@ -31,12 +31,12 @@ class NotionLangSmithSync:
         re.DOTALL
     )
 
-    def __init__(self, erp_value_option = 0, function_value_option = 0, update_erp_value_option = 4, langsmith_api_key: Optional[str] = None):
+    def __init__(self, erp_value_option = 0, function_value_option = 0, update_erp_value_option = 4, langsmith_api_key: str = None, notion_database_id: str = None):
         self.notion_token = os.getenv("NOTION_TOKEN")
         self.langsmith_api_key = langsmith_api_key
         self.notion = NotionClient(auth=self.notion_token)
         self.langsmith = LangSmithClient(api_key=self.langsmith_api_key)
-        self.NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID")
+        self.NOTION_DATABASE_ID = notion_database_id
         self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
         self.erp_value_option = erp_value_option
         self.function_value_option = function_value_option
@@ -150,10 +150,11 @@ class NotionLangSmithSync:
     def fetch_all_block_content(self, page_id, block_id):
       """
       Fetches all child blocks under a given block_id, including nested blocks.
-      Formats each block as a list of strings with proper indentation.
+      Formats each block as a list of strings with proper indentation and hierarchical numbering.
       """
       content_lines = []
       ignored_blocks = []
+      list_counters = {}
 
       # Fetch the block itself
       block = self.notion.blocks.retrieve(block_id)
@@ -162,14 +163,16 @@ class NotionLangSmithSync:
       block_text = self.extract_text(block_data)
 
       if block_text:
-          indent = "  " * 1
+          indent = "    " * 1
           if block_type == "bulleted_list_item":
               content_lines.append(f"{indent}- {block_text}")
           elif block_type == "numbered_list_item":
-              content_lines.append(f"{indent}1. {block_text}")
+              list_counters[1] = list_counters.get(1, 0) + 1
+              content_lines.append(f"{indent}{list_counters[1]}. {block_text}")
           else:
               content_lines.append(f"{indent}{block_text}")
 
+      # Fetch all nested child blocks
       all_nested_blocks = self.get_all_blocks(block_id)
 
       for block in all_nested_blocks:
@@ -180,7 +183,7 @@ class NotionLangSmithSync:
               continue
 
           level = block.get("level", 0)
-          indent = "  " * (level + 1)
+          indent = "    " * (level + 1)
 
           if block_type == "toggle":
               text = self.extract_text(block["toggle"])
@@ -208,11 +211,22 @@ class NotionLangSmithSync:
               if block_type == "bulleted_list_item":
                   content_lines.append(f"{indent}- {block_text}")
               elif block_type == "numbered_list_item":
-                  content_lines.append(f"{indent}1. {block_text}")
+                  # Ensure counter for this level exists
+                  while len(list_counters) <= level:
+                      list_counters[len(list_counters)] = 0
+                  list_counters[level] += 1
+
+                  # Reset deeper levels
+                  for deeper_level in list(filter(lambda l: l > level, list_counters)):
+                      list_counters[deeper_level] = 0
+
+                  hierarchy = [str(list_counters[l]) for l in sorted(list_counters) if l <= level and list_counters[l] > 0]
+                  content_lines.append(f"{indent}{'.'.join(hierarchy)}. {block_text}")
               else:
                   content_lines.append(f"{indent}{block_text}")
 
       return "\n".join(content_lines)
+
 
     def get_erp_value(self, page_id):
         try:
@@ -358,7 +372,7 @@ class NotionLangSmithSync:
         for block in all_blocks:
             block_type = block["type"]
             level = block.get("level", 0)
-            indent = "  " * level
+            indent = "    " * level
 
             if block["parent"].get("block_id") in ignored_blocks:
                 ignored_blocks.append(block["id"])
@@ -389,10 +403,18 @@ class NotionLangSmithSync:
             if block_type == "bulleted_list_item":
                 formatted = f"{indent}- {text}"
             elif block_type == "numbered_list_item":
-                list_counters[level] = list_counters.get(level, 0) + 1
+                # Ensure counters exist up to current level
+                while len(list_counters) <= level:
+                    list_counters[len(list_counters)] = 0
+                list_counters[level] += 1
+
+                # Reset all deeper levels
                 for deeper_level in list(filter(lambda l: l > level, list_counters)):
                     list_counters[deeper_level] = 0
-                formatted = f"{indent}{list_counters[level]}. {text}"
+
+                # Build hierarchical number like 1.2.3
+                hierarchy = [str(list_counters[l]) for l in sorted(list_counters) if l <= level and list_counters[l] > 0]
+                formatted = f"{indent}{'.'.join(hierarchy)}. {text}"
             else:
                 formatted = f"{indent}{text}"
 
@@ -414,18 +436,23 @@ class NotionLangSmithSync:
             A dictionary: {prompt_name: prompt_id}
         """
         prompt_map = {}
+        response = self.langsmith.list_prompts(is_public=False)
 
         # LangSmith Client returns paginated generator
-        for prompt in self.langsmith.list_traces(project_name="prompts"):
-            name = prompt.name
+        for prompt in response.repos:
+            print(prompt)
+            name = prompt.repo_handle
             id = str(prompt.id)
             prompt_map[name] = id
 
         return prompt_map
 
-    def sync_prompt(self, page_id: str, ):
+    def sync_prompt(self, page_id: str, export):
         paragraphs = self.get_notion_prompt(page_id)
         system_message = self.strip_custom_identifiers("\n".join(paragraphs))
+        if not export:
+          return system_message
+
         chat_prompt_template = ChatPromptTemplate([
             ("system", system_message),
             ("user", "{Conversation}"),
@@ -515,9 +542,3 @@ class NotionLangSmithSync:
             self.process_text(paragraph, line)
         doc.save(output_file)
         print(f"Document saved to {output_file}")
-
-test = NotionLangSmithSync(1,1,1)
-# prompt = "\n".join(test.get_notion_prompt("1ef7432eb8438081be51f2ec9121f6bd"))
-# print(test.strip_custom_identifiers(prompt))
-# print(test.get_all_prompt_names_and_ids())
-test.add_colored_prompt_to_doc("1ef7432eb8438081be51f2ec9121f6bd")
