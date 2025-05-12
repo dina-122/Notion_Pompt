@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EXTRACT PROMPT</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      font-size: 12px;
+      background-color: #f4f7fa;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      height: 100vh;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .container {
+      background: white;
+      padding: 1rem 1.5rem;
+      border-radius: 10px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      max-width: 480px;
+      width: 100%;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 1rem;
+      font-size: 1rem;
+      color: #333;
+    }
+
+    label {
+      font-weight: 600;
+      display: block;
+      margin-bottom: 0.3rem;
+      font-size: 11px;
+    }
+
+    input[type="text"],
+    select {
+      width: 100%;
+      padding: 0.4rem;
+      margin-bottom: 0.8rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 11px;
+    }
+
+    button {
+      width: 100%;
+      padding: 0.5rem;
+      background-color: #3b82f6;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 11px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background-color: #2563eb;
+    }
+
+    .message {
+      margin-top: 0.8rem;
+      text-align: center;
+      font-weight: bold;
+      font-size: 11px;
+    }
+
+    .success {
+      color: green;
+    }
+
+    .error {
+      color: red;
+    }
+
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>EXTRACT PROMPT</h1>
+    <form id="promptForm">
+      <label for="page_id">Notion Page ID<span style="color:red">*</span></label>
+      <input type="text" id="page_id" name="page_id" required />
+
+      <label for="extract_option">Extract To</label>
+      <select id="extract_option" required>
+        <option value="" disabled selected>Select an option</option>
+        <option value="0">ERP</option>
+        <option value="1">LangSmith</option>
+        <option value="2">Word docx</option>
+      </select>
+
+      <!-- ERP Fields -->
+      <div id="erpFields" class="hidden">
+        <label for="prompt_name">Prompt Name</label>
+        <input type="text" id="prompt_name" name="prompt_name" />
+
+        <label for="prompt_id">Prompt ID</label>
+        <input type="text" id="prompt_id" name="prompt_id" />
+
+        <label for="erp_value_name">ERP Value</label>
+        <select id="erp_value_name" required>
+          <option value="" disabled selected>@ERP_Value_Name@</option>
+        </select>
+
+        <label for="function_value_name">Function Value</label>
+        <select id="function_value_name" required>
+          <option value="" disabled selected>@Function_Value_Name@</option>
+        </select>
+      </div>
+
+      <!-- LangSmith Fields -->
+      <div id="langsmithFields" class="hidden">
+        <label for="prompt_name">Prompt Name</label>
+        <input type="text" id="prompt_name" name="prompt_name" />
+
+        <label for="prompt_id">Prompt ID</label>
+        <input type="text" id="prompt_id" name="prompt_id" />
+
+        <label for="erp_value_option">ERP Value</label>
+        <select id="erp_value_option">
+          <option value="" disabled selected>Select an option</option>
+          <option value="0">Default Value - Auto from Notion</option>
+          <option value="1">@ERP_Value@</option>
+          <option value="2">{Variable} – Manual on LangSmith</option>
+        </select>
+
+        <label for="function_value_option">Function Value</label>
+        <select id="function_value_option">
+          <option value="" disabled selected>Select an option</option>
+          <option value="0">Default Value</option>
+          <option value="1">@Function_Value@</option>
+          <option value="2">First Condition</option>
+        </select>
+      </div>
+
+      <!-- Word Fields -->
+      <div id="wordFields" class="hidden">
+        <label for="word_erp_value">ERP Value</label>
+        <select id="word_erp_value">
+          <option value="" disabled selected>Select an option</option>
+          <option value="0">Default Value</option>
+          <option value="1">@ERP_Value@</option>
+        </select>
+
+        <label for="word_function_value">Function Value</label>
+        <select id="word_function_value">
+          <option value="" disabled selected>Select an option</option>
+          <option value="0">Default Value</option>
+          <option value="3">Business Description</option>
+          <option value="4">No changes - extract as is</option>
+        </select>
+
+        <label for="word_update_erp">Update ERP Value</label>
+        <select id="word_update_erp">
+          <option value="" disabled selected>Select an option</option>
+          <option value="0">Default Value</option>
+          <option value="2">Business Description</option>
+          <option value="3">No changes</option>
+          <option value="4">Remove all</option>
+        </select>
+      </div>
+
+      <button type="submit">Send</button>
+    </form>
+    <div id="response" class="message"></div>
+  </div>
+
+  <script>
+    const extractOption = document.getElementById("extract_option");
+    const erpFields = document.getElementById("erpFields");
+    const langsmithFields = document.getElementById("langsmithFields");
+    const wordFields = document.getElementById("wordFields");
+
+    extractOption.addEventListener("change", () => {
+      erpFields.classList.add("hidden");
+      langsmithFields.classList.add("hidden");
+      wordFields.classList.add("hidden");
+
+      const value = parseInt(extractOption.value);
+      if (value === 0) {
+        erpFields.classList.remove("hidden");
+      } else if (value === 1) {
+        langsmithFields.classList.remove("hidden");
+      } else if (value === 2) {
+        wordFields.classList.remove("hidden");
+      }
+    });
+
+    document.getElementById("promptForm").addEventListener("submit", async function (event) {
+      event.preventDefault();
+
+      const pageId = document.getElementById("page_id").value;
+      const extractionOption = parseInt(document.getElementById("extract_option").value);
+      const responseBox = document.getElementById("response");
+
+      let payload = {
+        page_id: pageId,
+        extraction_option: extractionOption
+      };
+
+      let endpoint = "";
+
+      switch (extractionOption) {
+        case 0:
+          payload.prompt_name = document.getElementById("prompt_name").value;
+          payload.prompt_id = document.getElementById("prompt_id").value;
+          payload.erp_value_name = document.getElementById("erp_value_name").value;
+          payload.function_value_name = document.getElementById("function_value_name").value;
+          endpoint = "/extract_prompt_to_erp";
+          break;
+        case 1:
+          payload.prompt_name = document.getElementById("prompt_name").value;
+          payload.prompt_id = document.getElementById("prompt_id").value;
+          payload.erp_value_option = parseInt(document.getElementById("erp_value_option").value);
+          payload.function_erp_option = parseInt(document.getElementById("function_value_option").value);
+          endpoint = "/extract_prompt_to_langsmith";
+          break;
+        case 2:
+          payload.erp_value_option = parseInt(document.getElementById("word_erp_value").value);
+          payload.function_value_option = parseInt(document.getElementById("word_function_value").value);
+          payload.updated_erp_option = parseInt(document.getElementById("word_update_erp").value);
+          endpoint = "/extract_prompt_to_word";
+          break;
+        default:
+          responseBox.textContent = "Invalid extraction option selected.";
+          responseBox.className = "message error";
+          return;
+      }
+
+      responseBox.textContent = "Processing...";
+      responseBox.className = "message";
+
+      try {
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+          responseBox.textContent = typeof result.message === "string"
+            ? result.message
+            : JSON.stringify(result.message);
+          responseBox.classList.add("success");
+        } else {
+          responseBox.textContent = result.detail || "An error occurred.";
+          responseBox.classList.add("error");
+        }
+      } catch (err) {
+        responseBox.textContent = "Network error or API unreachable.";
+        responseBox.classList.add("error");
+      }
+    });
+  </script>
+</body>
+</html>
