@@ -15,11 +15,11 @@
     height: 100vh;
     align-items: center;
     justify-content: center;
-    overflow: visible !important; /* Allow dropdowns to open outside viewport */
+    overflow: visible !important;
   }
 
   html {
-    overflow: visible !important; /* Prevent clipping */
+    overflow: visible !important;
   }
 
   .container {
@@ -29,7 +29,7 @@
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     max-width: 480px;
     width: 100%;
-    overflow: visible; /* Ensure dropdowns are not clipped by container */
+    overflow: visible;
   }
 
   h1 {
@@ -54,8 +54,8 @@
     border: 1px solid #ccc;
     border-radius: 4px;
     font-size: 11px;
-    max-height: 200px;     /* Limit height of dropdown */
-    overflow-y: auto;      /* Enable vertical scroll if needed */
+    max-height: 200px;
+    overflow-y: auto;
   }
 
   button {
@@ -117,12 +117,12 @@
         <input type="text" id="prompt_id" name="prompt_id" />
 
         <label for="erp_value_name">ERP Value</label>
-        <select id="erp_value_name" required>
+        <select id="erp_value_name" name="erp_value_name">
           <option value="" disabled selected>@ERP_Value_Name@</option>
         </select>
 
         <label for="function_value_name">Function Value</label>
-        <select id="function_value_name" required>
+        <select id="function_value_name" name="function_value_name">
           <option value="" disabled selected>@Function_Value_Name@</option>
         </select>
       </div>
@@ -130,20 +130,20 @@
       <!-- LangSmith Fields -->
       <div id="langsmithFields" class="hidden">
         <label id="prompt_name_label" for="prompt_dropdown">Prompt Name - ID</label>
-        <select id="prompt_dropdown">
-          <option value="" disabled selected>Loading prompt options...</option>
+        <select id="prompt_dropdown" name="prompt_dropdown">
+          <option value="" disabled selected>Loading prompts...</option>
         </select>
 
         <label for="erp_value_option">ERP Value</label>
-        <select id="erp_value_option">
+        <select id="erp_value_option" name="erp_value_option">
           <option value="" disabled selected>Select an option</option>
-          <option value="0">Default Value - Auto from Notion</option>
+          <option value="0">Default Value - The value is retrieved automatically from Notion</option>
           <option value="1">@ERP_Value@</option>
-          <option value="2">{Variable} – Manual on LangSmith</option>
+          <option value="2">{Variable} – You should manually replace this in langsmith</option>
         </select>
 
         <label for="function_value_option">Function Value</label>
-        <select id="function_value_option">
+        <select id="function_value_option" name="function_value_option">
           <option value="" disabled selected>Select an option</option>
           <option value="0">Default Value</option>
           <option value="1">@Function_Value@</option>
@@ -154,7 +154,8 @@
           <input type="checkbox" id="overwrite_existing" />
           <label for="overwrite_existing" style="font-weight: normal; display: inline;">
             Please note that updating the existing prompt will overwrite it and delete already created tools.
-            If you wish to do that, check this box. Otherwise, a .txt file will be generated to manually update LangSmith.
+            If you wish to do that, check this box. 
+            Otherwise, a .txt file will be generated to manually copy and paste in LangSmith.
           </label>
         </div>
       </div>
@@ -162,14 +163,14 @@
       <!-- Word Fields -->
       <div id="wordFields" class="hidden">
         <label for="word_erp_value">ERP Value</label>
-        <select id="word_erp_value">
+        <select id="word_erp_value" name="word_erp_value">
           <option value="" disabled selected>Select an option</option>
           <option value="0">Default Value</option>
           <option value="1">@ERP_Value@</option>
         </select>
 
         <label for="word_function_value">Function Value</label>
-        <select id="word_function_value">
+        <select id="word_function_value" name="word_function_value">
           <option value="" disabled selected>Select an option</option>
           <option value="0">Default Value</option>
           <option value="3">Business Description</option>
@@ -177,11 +178,11 @@
         </select>
 
         <label for="word_update_erp">Update ERP Value</label>
-        <select id="word_update_erp">
+        <select id="word_update_erp" name="word_update_erp">
           <option value="" disabled selected>Select an option</option>
           <option value="0">Default Value</option>
           <option value="2">Business Description</option>
-          <option value="3">No changes</option>
+          <option value="3">No changes - extract as is</option>
           <option value="4">Remove all</option>
         </select>
       </div>
@@ -197,34 +198,46 @@
     const langsmithFields = document.getElementById("langsmithFields");
     const wordFields = document.getElementById("wordFields");
     const promptDropdown = document.getElementById("prompt_dropdown");
-    const promptLabel = document.getElementById("prompt_name_label");
-
+  
     extractOption.addEventListener("change", async () => {
       erpFields.classList.add("hidden");
       langsmithFields.classList.add("hidden");
       wordFields.classList.add("hidden");
-
+  
+      // Reset required attributes
+      document.getElementById("erp_value_name").required = false;
+      document.getElementById("function_value_name").required = false;
+      document.getElementById("prompt_dropdown").required = false;
+      document.getElementById("erp_value_option").required = false;
+      document.getElementById("function_value_option").required = false;
+      document.getElementById("word_erp_value").required = false;
+      document.getElementById("word_function_value").required = false;
+      document.getElementById("word_update_erp").required = false;
+  
       const value = parseInt(extractOption.value);
       const department = new URLSearchParams(window.location.search).get("department");
-
+  
       if (value === 0) {
         erpFields.classList.remove("hidden");
-
+        document.getElementById("erp_value_name").required = true;
+        document.getElementById("function_value_name").required = true;
+  
       } else if (value === 1) {
         langsmithFields.classList.remove("hidden");
-
-        // Reset dropdown
+        document.getElementById("prompt_dropdown").required = true;
+        document.getElementById("erp_value_option").required = true;
+        document.getElementById("function_value_option").required = true;
+  
         promptDropdown.innerHTML = "";
         const loadingOption = document.createElement("option");
         loadingOption.value = "";
         loadingOption.textContent = "Loading prompt options...";
         promptDropdown.appendChild(loadingOption);
-
+  
         if (department) {
           try {
             const res = await fetch(`/get_prompts_name_id?department=${department}`);
             const data = await res.json();
-
             promptDropdown.innerHTML = "";
             data.prompts.forEach(entry => {
               const opt = document.createElement("option");
@@ -241,26 +254,30 @@
             promptDropdown.appendChild(errorOption);
           }
         }
+  
       } else if (value === 2) {
         wordFields.classList.remove("hidden");
+        document.getElementById("word_erp_value").required = true;
+        document.getElementById("word_function_value").required = true;
+        document.getElementById("word_update_erp").required = true;
       }
     });
-
+  
     document.getElementById("promptForm").addEventListener("submit", async function (event) {
       event.preventDefault();
-
+  
       const pageId = document.getElementById("page_id").value;
       const extractionOption = parseInt(document.getElementById("extract_option").value);
       const responseBox = document.getElementById("response");
       const department = new URLSearchParams(window.location.search).get("department");
-
+  
       let payload = {
         page_id: pageId,
         extraction_option: extractionOption
       };
-
+  
       let endpoint = "";
-
+  
       switch (extractionOption) {
         case 0:
           payload.prompt_name = document.getElementById("prompt_name").value;
@@ -269,57 +286,91 @@
           payload.function_value_name = document.getElementById("function_value_name").value;
           endpoint = "/extract_prompt_to_erp";
           break;
-
+  
         case 1:
           const selected = document.getElementById("prompt_dropdown").value;
           const [namePart, idPart] = selected.split(" - ");
-          payload.prompt_name = namePart.trim();
+          payload.prompt_name = namePart.trim() + ".txt";
           payload.prompt_id = idPart.trim();
           payload.erp_value_option = parseInt(document.getElementById("erp_value_option").value);
-          payload.function_erp_option = parseInt(document.getElementById("function_value_option").value);
+          payload.function_value_option = parseInt(document.getElementById("function_value_option").value);
           payload.overwrite_existing = document.getElementById("overwrite_existing").checked;
           endpoint = `/extract_prompt_to_langsmith?department=${department}`;
           break;
-
+  
         case 2:
           payload.erp_value_option = parseInt(document.getElementById("word_erp_value").value);
           payload.function_value_option = parseInt(document.getElementById("word_function_value").value);
-          payload.updated_erp_option = parseInt(document.getElementById("word_update_erp").value);
+          payload.update_erp_option = parseInt(document.getElementById("word_update_erp").value);
           endpoint = "/extract_prompt_to_word";
           break;
-
+  
         default:
           responseBox.textContent = "Invalid extraction option selected.";
           responseBox.className = "message error";
           return;
       }
-
+  
       responseBox.textContent = "Processing...";
       responseBox.className = "message";
-
+  
       try {
         const response = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload)
         });
-
-        const result = await response.json();
-
-        if (response.ok) {
-          responseBox.textContent = typeof result.message === "string"
-            ? result.message
-            : JSON.stringify(result.message);
-          responseBox.classList.add("success");
-        } else {
-          responseBox.textContent = result.detail || "An error occurred.";
+  
+        if (!response.ok) {
+          const errData = await response.json();
+          responseBox.textContent = errData.detail || "An error occurred.";
           responseBox.classList.add("error");
+          return;
         }
+  
+        // Handle binary file download
+        if (extractionOption === 1 && !payload.overwrite_existing) {
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = payload.prompt_name;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          window.URL.revokeObjectURL(url);
+          responseBox.textContent = "Prompt downloaded as .txt file.";
+          responseBox.classList.add("success");
+          return;
+        }
+  
+        if (extractionOption === 2) {
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "prompt_output.docx";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          window.URL.revokeObjectURL(url);
+          responseBox.textContent = "Word document downloaded.";
+          responseBox.classList.add("success");
+          return;
+        }
+  
+        const result = await response.json();
+        responseBox.textContent = typeof result.message === "string"
+          ? result.message
+          : JSON.stringify(result.message);
+        responseBox.classList.add("success");
+  
       } catch (err) {
         responseBox.textContent = "Network error or API unreachable.";
         responseBox.classList.add("error");
       }
     });
   </script>
+
 </body>
 </html>

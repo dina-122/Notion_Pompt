@@ -1,5 +1,3 @@
-
-
 from notion_client import Client as NotionClient
 from langsmith import Client as LangSmithClient
 from langchain.prompts import PromptTemplate
@@ -12,7 +10,7 @@ import re
 from docx import Document
 from docx.shared import RGBColor
 from typing import Optional
-
+from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -30,6 +28,15 @@ class NotionLangSmithSync:
         r"(ONLY_ERP_VALUE|FUNCTION_VALUE|UPDATE_ERP_VALUE|FUNCTION_VALUE_BUSINESS_DESCRIPTION)\[(.*?)\]\1",
         re.DOTALL
     )
+    PROMPT_TAGS = {
+    "mvresolvers": "agent:ChatGPT MV Resolvers",
+    "ccresolvers": "agent:ChatGPT CC Resolvers",
+    "mvsales": "agent:MV Sales Agent",
+    "ccsales": "agent:CC Sales Agent",
+    "delighters": "agent:Delighters Agent",
+    "doctors": "agent:Doctor's assistant",
+    "applicants": "agent:Maids Line",
+}
 
     def __init__(self, erp_value_option = 0, function_value_option = 0, update_erp_value_option = 4, langsmith_api_key: str = None, notion_database_id: str = None):
         self.notion_token = os.getenv("NOTION_TOKEN")
@@ -447,18 +454,25 @@ class NotionLangSmithSync:
 
         return prompt_map
 
-    def sync_prompt(self, page_id: str, export):
+    def sync_prompt(self, page_id: str, export: bool, prompt_name: str, department = None):
         paragraphs = self.get_notion_prompt(page_id)
         system_message = self.strip_custom_identifiers("\n".join(paragraphs))
+
         if not export:
-          return system_message
+            # Save system_message to a text file
+            filename = f"{prompt_name or 'notion_prompt'}.txt"
+            file_path = Path("outputs") / filename
+            os.makedirs(file_path.parent, exist_ok=True)
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(system_message)
+            return str(file_path)
 
         chat_prompt_template = ChatPromptTemplate([
             ("system", system_message),
             ("user", "{Conversation}"),
         ])
 
-        prompt_identifier = self.get_page_title(page_id).strip().replace(" ", "_").lower()
+        prompt_identifier = prompt_name.strip().replace(" ", "_").lower()
 
         print(f"\nUsing prompt identifier: {prompt_identifier}")
         print(system_message)
@@ -534,7 +548,7 @@ class NotionLangSmithSync:
       if pos < len(text):
           paragraph.add_run(text[pos:])
 
-    def add_colored_prompt_to_doc(self, page_id, output_file="prompt_output.docx"):
+    def add_colored_prompt_to_doc(self, page_id, output_file="outputs/prompt_output.docx"):
         doc = Document()
         prompt_lines = self.get_notion_prompt(page_id)
         for line in prompt_lines:
@@ -542,3 +556,4 @@ class NotionLangSmithSync:
             self.process_text(paragraph, line)
         doc.save(output_file)
         print(f"Document saved to {output_file}")
+        return output_file

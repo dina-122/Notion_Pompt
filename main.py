@@ -45,8 +45,8 @@ class ERPRequest(BaseModel):
 class LangSmithRequest(BaseModel):
     page_id: str
     extraction_option: int
-    # prompt_name: str
-    # prompt_id: str
+    prompt_name: str
+    prompt_id: str
     erp_value_option: int
     function_value_option: int
     overwrite_existing: bool
@@ -57,7 +57,7 @@ class WordRequest(BaseModel):
     extraction_option: int
     erp_value_option: int
     function_value_option: int
-    updated_erp_option: int
+    update_erp_option: int
 
 # ---------------- Endpoints ----------------
 
@@ -84,9 +84,16 @@ async def extract_prompt_to_langsmith(data: LangSmithRequest, request: Request):
             langsmith_api_key=langsmith_api_key,
             notion_database_id=notion_database_id
         )
+        result = syncer.sync_prompt(data.page_id, export=data.overwrite_existing,prompt_name=data.prompt_name)
 
-        result_message = syncer.sync_prompt(data.page_id, data.overwrite_existing)
-        return {"status": "success", "message": result_message}
+        if not data.overwrite_existing:
+            return FileResponse(
+                path=result,
+                filename=data.prompt_name,
+                media_type="text/plain"
+            )
+
+        return {"status": "success", "message": result}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -101,12 +108,19 @@ async def extract_prompt_to_word(data: WordRequest, request: Request):
         syncer = NotionLangSmithSync(
             erp_value_option=data.erp_value_option,
             function_value_option=data.function_value_option,
-            updated_erp_option=data.updated_erp_option,
+            update_erp_value_option=data.update_erp_option,
             notion_database_id=notion_database_id
         )
 
-        result_message = syncer.add_colored_prompt_to_doc(data.page_id)
-        return {"status": "success", "message": result_message}
+        # Generate document and get its path
+        result_path = syncer.add_colored_prompt_to_doc(data.page_id)
+
+        return FileResponse(
+            path=result_path,
+            filename="prompt_output.docx",
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+        
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
