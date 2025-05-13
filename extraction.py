@@ -479,40 +479,34 @@ class NotionLangSmithSync:
         print(f"\nTotal lines in prompt: {len(paragraphs)}")
 
         try:
-            self.langsmith.push_prompt(
+            essential_tags = ["notion"]
+            if department and department in self.PROMPT_TAGS:
+                essential_tags.append(self.PROMPT_TAGS[department])
+            else:
+                essential_tags.append("agent:None")
+            tags = []
+            if self.langsmith._prompt_exists(prompt_identifier):
+                tags = self.langsmith.get_prompt(prompt_identifier).tags
+            for tag in essential_tags:
+                if tag not in tags:
+                    tags.append(tag)
+
+            prompt_url = self.langsmith.push_prompt(
                 prompt_identifier=prompt_identifier,
                 object=chat_prompt_template,
-                description="Updated prompt with content"
+                description="Updated prompt with content",
+                tags=tags
             )
-            print(f" Successfully updated existing prompt: {prompt_identifier}")
-            return {"status": "updated", "message": "Prompt updated successfully."}
+            print(f" Successfully pushed prompt: {prompt_identifier}")
+            return {"status": "updated", "message": "Prompt pushed successfully.", "prompt_url": prompt_url}
 
         except Exception as e:
             error_msg = str(e)
-
-            if "not found" in error_msg.lower():
-                print(f"Prompt {prompt_identifier} not found. Creating new prompt...")
-                self.langsmith.create_prompt(
-                    prompt_identifier=prompt_identifier,
-                    description="Prompt created from Notion page",
-                    tags=["notion", "auto-sync"],
-                    is_public=False
-                )
-                self.langsmith.push_prompt(
-                    prompt_identifier=prompt_identifier,
-                    object=chat_prompt_template,
-                    description="Populated newly created prompt"
-                )
-                print(f" Successfully created and populated new prompt: {prompt_identifier}")
-                return {"status": "created", "message": "Prompt created and pushed successfully."}
-
-            elif "Nothing to commit" in error_msg:
+            if "Nothing to commit" in error_msg:
                 print(f" No changes in prompt: {prompt_identifier}. Skipping push.")
                 return {"status": "skipped", "message": "Prompt not updated — no changes detected."}
-
             else:
                 raise e
-
 
     def process_text(self, paragraph, text):
       pos = 0
