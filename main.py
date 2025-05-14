@@ -156,4 +156,4 @@ def main():
 if __name__ == "__main__":
     main()
 
-#Access local HTML page with http://localhost:11110/?department=type_department_name 
+#Access local HTML page with  http://localhost:11110/?department=type_department_name

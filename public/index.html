@@ -294,10 +294,92 @@
         </select>
       </div>
 
-      <button type="submit">Send</button>
+      <button type="submit" id="submitButton">Send</button>
     </form>
     <div id="response" class="message"></div>
   </div>
+
+  <!-- Results page template that will be used in the new tab -->
+  <template id="resultsPageTemplate">
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Extract Prompt Results</title>
+      <style>
+        body {
+          font-family: Arial, sans-serif;
+          margin: 0;
+          padding: 20px;
+          background-color: #f4f7fa;
+        }
+        .results-container {
+          max-width: 800px;
+          margin: 0 auto;
+          background: white;
+          padding: 20px;
+          border-radius: 10px;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+          color: #333;
+          margin-top: 0;
+        }
+        .message {
+          margin: 20px 0;
+          padding: 15px;
+          border-radius: 5px;
+        }
+        .success {
+          background-color: #d4edda;
+          color: #155724;
+          border: 1px solid #c3e6cb;
+        }
+        .error {
+          background-color: #f8d7da;
+          color: #721c24;
+          border: 1px solid #f5c6cb;
+        }
+        .link {
+          display: inline-block;
+          margin-top: 10px;
+          color: #3b82f6;
+          text-decoration: underline;
+        }
+        .info {
+          background-color: #e2f0fd;
+          color: #084298;
+          border: 1px solid #b6d4fe;
+        }
+        .download-section {
+          margin-top: 20px;
+        }
+        .download-btn {
+          background-color: #3b82f6;
+          color: white;
+          border: none;
+          border-radius: 4px;
+          padding: 10px 15px;
+          cursor: pointer;
+          font-size: 14px;
+        }
+        .download-btn:hover {
+          background-color: #2563eb;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="results-container">
+        <h1>Extract Prompt Results</h1>
+        <div id="resultsMessage" class="message info">Processing your request...</div>
+        <div id="downloadSection" class="download-section" style="display: none;">
+          <button id="downloadBtn" class="download-btn">Download File</button>
+        </div>
+      </div>
+    </body>
+    </html>
+  </template>
 
   <script>
     const extractOption = document.getElementById("extract_option");
@@ -308,6 +390,7 @@
     const promptSelected = document.getElementById("prompt_selected");
     const promptOptions = document.getElementById("prompt_options");
     const promptSearch = document.getElementById("prompt_search");
+    let resultWindow = null;
   
     // Prompt selection toggle
     const existingPromptToggle = document.getElementById("existing_prompt_toggle");
@@ -486,6 +569,54 @@
         document.getElementById("word_update_erp").required = true;
       }
     });
+
+    // Function to create and open a new results tab
+    function openResultsTab() {
+      // Close previous window if it exists and is not closed
+      if (resultWindow && !resultWindow.closed) {
+        resultWindow.close();
+      }
+      
+      // Create a new window/tab
+      resultWindow = window.open('', '_blank');
+      
+      // Get the template content
+      const template = document.getElementById('resultsPageTemplate');
+      
+      // Write the template content to the new window
+      resultWindow.document.write(template.innerHTML);
+      resultWindow.document.close();
+      
+      return resultWindow;
+    }
+
+    // Function to handle file download in the new tab
+    function handleFileDownload(blob, filename, newWindow) {
+      // Create a URL for the blob
+      const url = URL.createObjectURL(blob);
+      
+      // Update the download button in the new window
+      const downloadBtn = newWindow.document.getElementById('downloadBtn');
+      const downloadSection = newWindow.document.getElementById('downloadSection');
+      
+      // Show the download section
+      downloadSection.style.display = 'block';
+      
+      // Set up the download button
+      downloadBtn.addEventListener('click', function() {
+        const a = newWindow.document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        
+        // Clean up
+        setTimeout(() => {
+          URL.revokeObjectURL(url);
+        }, 100);
+      });
+      
+      return url;
+    }
   
     document.getElementById("promptForm").addEventListener("submit", async function (event) {
       event.preventDefault();
@@ -560,8 +691,15 @@
           return;
       }
   
+      // Open results tab before starting the request
+      const newWindow = openResultsTab();
+      const resultsMessage = newWindow.document.getElementById('resultsMessage');
+      
+      // Show processing message in both windows
       responseBox.textContent = "Processing...";
       responseBox.className = "message";
+      resultsMessage.textContent = "Processing your request...";
+      resultsMessage.className = "message info";
   
       try {
         const response = await fetch(endpoint, {
@@ -572,70 +710,93 @@
   
         if (!response.ok) {
           const errData = await response.json();
-          responseBox.textContent = errData.detail || "An error occurred.";
-          responseBox.classList.add("error");
+          const errorMsg = errData.detail || "An error occurred.";
+          
+          // Update both windows with error
+          responseBox.textContent = errorMsg;
+          responseBox.className = "message error";
+          
+          resultsMessage.textContent = errorMsg;
+          resultsMessage.className = "message error";
           return;
         }
   
-        // Handle binary file download
+        // Handle binary file download for LangSmith .txt file
         if (extractionOption === 1 && !payload.overwrite_existing) {
           const blob = await response.blob();
-          const url = window.URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = payload.prompt_name;
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-          window.URL.revokeObjectURL(url);
-          responseBox.textContent = "Prompt downloaded as .txt file.";
-          responseBox.classList.add("success");
+          const filename = payload.prompt_name + ".txt";
+          
+          // Handle file download in the new window
+          handleFileDownload(blob, filename, newWindow);
+          
+          // Update messages
+          responseBox.textContent = "Prompt processed successfully.";
+          responseBox.className = "message success";
+          
+          resultsMessage.textContent = "Prompt has been successfully processed. Click the button below to download the .txt file.";
+          resultsMessage.className = "message success";
           return;
         }
   
+        // Handle Word document download
         if (extractionOption === 2) {
           const blob = await response.blob();
-          const url = window.URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = "prompt_output.docx";
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-          window.URL.revokeObjectURL(url);
-          responseBox.textContent = "Word document downloaded.";
-          responseBox.classList.add("success");
+          const filename = "prompt_output.docx";
+          
+          // Handle file download in the new window
+          handleFileDownload(blob, filename, newWindow);
+          
+          // Update messages
+          responseBox.textContent = "Word document processed successfully.";
+          responseBox.className = "message success";
+          
+          resultsMessage.textContent = "Word document has been successfully generated. Click the button below to download the file.";
+          resultsMessage.className = "message success";
           return;
         }
   
+        // Handle JSON responses
         const result = await response.json();
         
         // Check if the message contains a URL
         if (typeof result.message === "string" && (result.message.startsWith("http://") || result.message.startsWith("https://"))) {
-          // Clear previous content
+          // Update main window
           responseBox.innerHTML = "";
-          
-          // Create a link element
           const link = document.createElement("a");
           link.href = result.message;
           link.textContent = "Open Generated Prompt on LangSmith";
-          link.target = "_blank"; // Open in new tab
+          link.target = "_blank";
           link.className = "success";
           link.style.textDecoration = "underline";
-          
-          // Add the link to response box
           responseBox.appendChild(link);
+          
+          // Update new window
+          resultsMessage.innerHTML = `
+            <p>Your prompt has been successfully processed!</p>
+            <p><a href="${result.message}" target="_blank" class="link">Open Generated Prompt on LangSmith</a></p>
+          `;
+          resultsMessage.className = "message success";
         } else {
-          // Handle non-URL responses as before
-          responseBox.textContent = typeof result.message === "string"
+          // Handle non-URL responses
+          const message = typeof result.message === "string"
             ? result.message
             : JSON.stringify(result.message);
-          responseBox.classList.add("success");
+          
+          // Update both windows
+          responseBox.textContent = message;
+          responseBox.className = "message success";
+          
+          resultsMessage.textContent = message;
+          resultsMessage.className = "message success";
         }
   
       } catch (err) {
+        // Handle errors in both windows
         responseBox.textContent = "Network error or API unreachable.";
-        responseBox.classList.add("error");
+        responseBox.className = "message error";
+        
+        resultsMessage.textContent = "Network error or API unreachable.";
+        resultsMessage.className = "message error";
       }
     });
   </script>
