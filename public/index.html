@@ -91,6 +91,87 @@
   .hidden {
     display: none;
   }
+  
+  /* Custom searchable dropdown styles */
+  .custom-select-container {
+    position: relative;
+    width: 100%;
+    margin-bottom: 0.8rem;
+  }
+  
+  .select-selected {
+    background-color: white;
+    padding: 0.4rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+  }
+  
+  .select-items {
+    position: absolute;
+    background-color: white;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 99;
+    max-height: 250px;
+    overflow-y: auto;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+  
+  .select-hide {
+    display: none;
+  }
+  
+  .dropdown-search {
+    border-radius: 0;
+    border: none;
+    border-bottom: 1px solid #eee;
+    margin-bottom: 0;
+  }
+  
+  #prompt_options div {
+    padding: 0.4rem;
+    cursor: pointer;
+    font-size: 11px;
+  }
+  
+  #prompt_options div:hover {
+    background-color: #f4f7fa;
+  }
+  
+  /* Toggle styles */
+  .toggle-container {
+    display: flex;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  
+  .toggle-option {
+    flex: 1;
+    text-align: center;
+    padding: 0.4rem;
+    cursor: pointer;
+    font-size: 11px;
+    transition: background-color 0.2s;
+  }
+  
+  .toggle-option.selected {
+    background-color: #3b82f6;
+    color: white;
+  }
+  
+  .toggle-option:not(.selected) {
+    background-color: #f4f7fa;
+  }
+  
+  .toggle-option:not(.selected):hover {
+    background-color: #e4e7ea;
+  }
 </style>
 </head>
 <body>
@@ -110,11 +191,10 @@
 
       <!-- ERP Fields -->
       <div id="erpFields" class="hidden">
-        <label for="prompt_name">Prompt Name</label>
-        <input type="text" id="prompt_name" name="prompt_name" />
-
-        <label for="prompt_id">Prompt ID</label>
-        <input type="text" id="prompt_id" name="prompt_id" />
+        <label id="prompt_name_label" for="prompt_dropdown-erp">Prompt Name - ID</label>
+        <select id="prompt_dropdown-erp" name="prompt_dropdown-erp">
+          <option value="" disabled selected>Loading prompts...</option>
+        </select>
 
         <label for="erp_value_name">ERP Value</label>
         <select id="erp_value_name" name="erp_value_name">
@@ -129,10 +209,36 @@
 
       <!-- LangSmith Fields -->
       <div id="langsmithFields" class="hidden">
-        <label id="prompt_name_label" for="prompt_dropdown">Prompt Name - ID</label>
-        <select id="prompt_dropdown" name="prompt_dropdown">
-          <option value="" disabled selected>Loading prompts...</option>
-        </select>
+        <label id="prompt_name_label" for="prompt_selection_type">Prompt Selection</label>
+        <div class="toggle-container" style="margin-bottom: 0.8rem;">
+          <div class="toggle-option selected" data-option="existing" id="existing_prompt_toggle">Use Existing Prompt</div>
+          <div class="toggle-option" data-option="new" id="new_prompt_toggle">Create New Prompt</div>
+        </div>
+        
+        <!-- Existing prompt selection -->
+        <div id="existing_prompt_container">
+          <label for="prompt_dropdown">Select Existing Prompt</label>
+          
+          <!-- Custom searchable dropdown -->
+          <div class="custom-select-container">
+            <div class="select-selected" id="prompt_selected">Loading prompts...</div>
+            <div class="select-items select-hide">
+              <input type="text" id="prompt_search" placeholder="Search prompts..." class="dropdown-search">
+              <div id="prompt_options">
+                <!-- Options will be populated here -->
+              </div>
+            </div>
+            <select id="prompt_dropdown" name="prompt_dropdown" style="display: none;">
+              <option value="" disabled selected>Loading prompts...</option>
+            </select>
+          </div>
+        </div>
+        
+        <!-- New prompt input -->
+        <div id="new_prompt_container" style="display: none;">
+          <label for="new_prompt_name">New Prompt Name</label>
+          <input type="text" id="new_prompt_name" name="new_prompt_name" placeholder="Enter new prompt name" />
+        </div>
 
         <label for="erp_value_option">ERP Value</label>
         <select id="erp_value_option" name="erp_value_option">
@@ -157,6 +263,7 @@
             If you wish to do that, check this box. 
             Otherwise, a .txt file will be generated to manually copy and paste in LangSmith.
           </label>
+          <br>
         </div>
       </div>
 
@@ -198,6 +305,109 @@
     const langsmithFields = document.getElementById("langsmithFields");
     const wordFields = document.getElementById("wordFields");
     const promptDropdown = document.getElementById("prompt_dropdown");
+    const promptSelected = document.getElementById("prompt_selected");
+    const promptOptions = document.getElementById("prompt_options");
+    const promptSearch = document.getElementById("prompt_search");
+  
+    // Prompt selection toggle
+    const existingPromptToggle = document.getElementById("existing_prompt_toggle");
+    const newPromptToggle = document.getElementById("new_prompt_toggle");
+    const existingPromptContainer = document.getElementById("existing_prompt_container");
+    const newPromptContainer = document.getElementById("new_prompt_container");
+  
+    // Toggle between existing and new prompt
+    if (existingPromptToggle && newPromptToggle) {
+      const overwriteSection = document.getElementById("overwrite_existing").parentElement;
+      // Initialize flag to track current mode
+      let isNewPromptMode = false;
+      
+      existingPromptToggle.addEventListener("click", function() {
+        existingPromptToggle.classList.add("selected");
+        newPromptToggle.classList.remove("selected");
+        existingPromptContainer.style.display = "block";
+        newPromptContainer.style.display = "none";
+        overwriteSection.style.display = "block"; // Show checkbox for existing prompts
+        isNewPromptMode = false; // Set flag
+      });
+      
+      newPromptToggle.addEventListener("click", function() {
+        newPromptToggle.classList.add("selected");
+        existingPromptToggle.classList.remove("selected");
+        newPromptContainer.style.display = "block";
+        existingPromptContainer.style.display = "none";
+        overwriteSection.style.display = "none"; // Hide checkbox for new prompts
+        isNewPromptMode = true; // Set flag
+      });
+      
+      // Expose flag to global scope so form submission can use it
+      window.isNewPromptMode = isNewPromptMode;
+    }
+  
+    // Store all prompts for search functionality
+    let allPrompts = [];
+  
+    // Toggle dropdown visibility
+    document.addEventListener("click", function(e) {
+      const selectContainer = document.querySelector(".custom-select-container");
+      const selectItems = document.querySelector(".select-items");
+      
+      if (!selectContainer) return;
+      
+      if (e.target.closest(".custom-select-container")) {
+        // Toggle dropdown if clicking within container
+        if (e.target === promptSelected) {
+          selectItems.classList.toggle("select-hide");
+          if (!selectItems.classList.contains("select-hide")) {
+            promptSearch.focus();
+          }
+        }
+        // Handle option selection
+        if (e.target.classList && e.target.classList.contains("option-item")) {
+          promptSelected.textContent = e.target.textContent;
+          promptSelected.setAttribute("data-value", e.target.getAttribute("data-value"));
+          promptDropdown.value = e.target.getAttribute("data-value");
+          selectItems.classList.add("select-hide");
+        }
+      } else {
+        // Close dropdown if clicking outside
+        selectItems.classList.add("select-hide");
+      }
+    });
+  
+    // Add event listener for prompt search
+    promptSearch?.addEventListener("input", function() {
+      const searchTerm = this.value.toLowerCase();
+      filterPromptOptions(searchTerm);
+    });
+  
+    // Function to filter prompts based on search term
+    function filterPromptOptions(searchTerm) {
+      promptOptions.innerHTML = "";
+      
+      if (!allPrompts.length) return;
+      
+      const filteredPrompts = allPrompts.filter(prompt => 
+        prompt.toLowerCase().includes(searchTerm)
+      );
+      
+      // Add filtered prompts to dropdown
+      filteredPrompts.forEach(entry => {
+        const div = document.createElement("div");
+        div.textContent = entry;
+        div.className = "option-item";
+        div.setAttribute("data-value", entry);
+        promptOptions.appendChild(div);
+      });
+      
+      // Show message if no results found
+      if (filteredPrompts.length === 0) {
+        const noResult = document.createElement("div");
+        noResult.textContent = "No matching prompts found";
+        noResult.style.color = "#999";
+        noResult.style.fontStyle = "italic";
+        promptOptions.appendChild(noResult);
+      }
+    }
   
     extractOption.addEventListener("change", async () => {
       erpFields.classList.add("hidden");
@@ -219,6 +429,7 @@
   
       if (value === 0) {
         erpFields.classList.remove("hidden");
+        document.getElementById("prompt_dropdown-erp").required = true;
         document.getElementById("erp_value_name").required = true;
         document.getElementById("function_value_name").required = true;
   
@@ -228,16 +439,18 @@
         document.getElementById("erp_value_option").required = true;
         document.getElementById("function_value_option").required = true;
   
-        promptDropdown.innerHTML = "";
-        const loadingOption = document.createElement("option");
-        loadingOption.value = "";
-        loadingOption.textContent = "Loading prompt options...";
-        promptDropdown.appendChild(loadingOption);
+        promptSelected.textContent = "Loading prompt options...";
+        promptOptions.innerHTML = "";
   
         if (department) {
           try {
             const res = await fetch(`/get_prompts_name_id?department=${department}`);
             const data = await res.json();
+            
+            // Store all prompts for search functionality
+            allPrompts = data.prompts;
+            
+            // Update hidden select for form submission
             promptDropdown.innerHTML = "";
             data.prompts.forEach(entry => {
               const opt = document.createElement("option");
@@ -245,13 +458,24 @@
               opt.innerText = entry;
               promptDropdown.appendChild(opt);
             });
+            
+            // Update custom dropdown UI
+            if (data.prompts.length > 0) {
+              promptSelected.textContent = "Select a prompt";
+              filterPromptOptions("");
+            } else {
+              promptSelected.textContent = "No prompts available";
+            }
+            
+            // Reset search field
+            if (promptSearch) {
+              promptSearch.value = "";
+            }
+            
           } catch (e) {
             console.error("Failed to fetch prompts:", e);
-            promptDropdown.innerHTML = "";
-            const errorOption = document.createElement("option");
-            errorOption.value = "";
-            errorOption.textContent = "Error loading prompts.";
-            promptDropdown.appendChild(errorOption);
+            promptSelected.textContent = "Error loading prompts";
+            promptOptions.innerHTML = "";
           }
         }
   
@@ -288,13 +512,38 @@
           break;
   
         case 1:
-          const selected = document.getElementById("prompt_dropdown").value;
-          const [namePart, idPart] = selected.split(" - ");
-          payload.prompt_name = namePart.trim() + ".txt";
-          payload.prompt_id = idPart.trim();
+          // Check which toggle is selected
+          const isNewPrompt = window.isNewPromptMode || newPromptToggle?.classList.contains("selected");
+          
+          if (isNewPrompt) {
+            // Use new prompt name
+            const newPromptName = document.getElementById("new_prompt_name").value.trim();
+            if (!newPromptName) {
+              responseBox.textContent = "Please enter a new prompt name.";
+              responseBox.className = "message error";
+              return;
+            }
+            payload.prompt_name = newPromptName;
+            payload.prompt_id = "new";
+            payload.create_new = true;
+            payload.overwrite_existing = true; // Always true for new prompts
+          } else {
+            // Use selected existing prompt
+            const selected = promptSelected.getAttribute("data-value") || promptDropdown.value;
+            if (!selected) {
+              responseBox.textContent = "Please select a prompt.";
+              responseBox.className = "message error";
+              return;
+            }
+            const [namePart, idPart] = selected.split(" - ");
+            payload.prompt_name = namePart.trim();
+            payload.prompt_id = idPart.trim();
+            payload.create_new = false;
+            payload.overwrite_existing = document.getElementById("overwrite_existing").checked;
+          }
+          
           payload.erp_value_option = parseInt(document.getElementById("erp_value_option").value);
           payload.function_value_option = parseInt(document.getElementById("function_value_option").value);
-          payload.overwrite_existing = document.getElementById("overwrite_existing").checked;
           endpoint = `/extract_prompt_to_langsmith?department=${department}`;
           break;
   
@@ -360,10 +609,29 @@
         }
   
         const result = await response.json();
-        responseBox.textContent = typeof result.message === "string"
-          ? result.message
-          : JSON.stringify(result.message);
-        responseBox.classList.add("success");
+        
+        // Check if the message contains a URL
+        if (typeof result.message === "string" && (result.message.startsWith("http://") || result.message.startsWith("https://"))) {
+          // Clear previous content
+          responseBox.innerHTML = "";
+          
+          // Create a link element
+          const link = document.createElement("a");
+          link.href = result.message;
+          link.textContent = "Open Generated Prompt on LangSmith";
+          link.target = "_blank"; // Open in new tab
+          link.className = "success";
+          link.style.textDecoration = "underline";
+          
+          // Add the link to response box
+          responseBox.appendChild(link);
+        } else {
+          // Handle non-URL responses as before
+          responseBox.textContent = typeof result.message === "string"
+            ? result.message
+            : JSON.stringify(result.message);
+          responseBox.classList.add("success");
+        }
   
       } catch (err) {
         responseBox.textContent = "Network error or API unreachable.";
