@@ -35,7 +35,10 @@ class NotionLangSmithSync:
     "ccsales": "agent:CC Sales Agent",
     "delighters": "agent:Delighters Agent",
     "doctors": "agent:Doctor's assistant",
-    "applicants": "agent:Maids Line",
+    "maidsat": "agent:Maids Line",
+    "atafrican": "agent:Maids Line",
+    "atphilipina": "agent:Maids Line",
+    "atethiopian": "agent:Maids Line",
 }
 
     def __init__(self, erp_value_option = 0, function_value_option = 0, update_erp_value_option = 4, langsmith_api_key: str = None, notion_database_id: str = None):
@@ -154,7 +157,7 @@ class NotionLangSmithSync:
 
       return response.choices[0].message.content.strip()
 
-    def fetch_all_block_content(self, page_id, block_id):
+    def fetch_all_block_content(self, page_id, block_id, add_title = True):
       """
       Fetches all child blocks under a given block_id, including nested blocks.
       Formats each block as a list of strings with proper indentation and hierarchical numbering.
@@ -162,14 +165,13 @@ class NotionLangSmithSync:
       content_lines = []
       ignored_blocks = []
       list_counters = {}
-
       # Fetch the block itself
       block = self.notion.blocks.retrieve(block_id)
       block_type = block["type"]
       block_data = block.get(block_type, {})
       block_text = self.extract_text(block_data)
 
-      if block_text:
+      if add_title and block_text:
           indent = "    " * 1
           if block_type == "bulleted_list_item":
               content_lines.append(f"{indent}- {block_text}")
@@ -232,6 +234,8 @@ class NotionLangSmithSync:
               else:
                   content_lines.append(f"{indent}{block_text}")
 
+      if not add_title:
+        content_lines.pop(0)
       return "\n".join(content_lines)
 
 
@@ -271,20 +275,8 @@ class NotionLangSmithSync:
                 blocks = self.get_all_blocks(block_id)
                 for block in blocks:
                     if block['type'] == 'callout' and block.get('has_children'):
-                        children = self.notion.blocks.children.list(block['id']).get("results", [])
-                        brown_texts = []
-                        for child in children:
-                            if child['type'] == 'paragraph' and 'paragraph' in child:
-                                text = self.extract_text(child['paragraph']).strip()
-                                if text:
-                                    brown_texts.append(text)
-                            elif child['type'] == 'bulleted_list_item' and 'bulleted_list_item' in child:
-                                text = self.extract_text(child['bulleted_list_item']).strip()
-                                if text:
-                                    brown_texts.append(text)
-                        if brown_texts:
-                            return "FUNCTION_VALUE[" + "\n".join(brown_texts) + "]FUNCTION_VALUE"
-                        return "{No brown background paragraphs found in callout}"
+                        val = self.fetch_all_block_content(page_id, block["id"], False)
+                        return "FUNCTION_VALUE[" + val + "]FUNCTION_VALUE"
 
             else:
               blocks = self.get_all_blocks(block_id)
@@ -443,7 +435,7 @@ class NotionLangSmithSync:
             A dictionary: {prompt_name: prompt_id}
         """
         prompt_map = {}
-        response = self.langsmith.list_prompts(is_public=False)
+        response = self.langsmith.list_prompts(is_public=False, limit=100)
 
         # LangSmith Client returns paginated generator
         for prompt in response.repos:
@@ -498,13 +490,13 @@ class NotionLangSmithSync:
                 tags=tags
             )
             print(f" Successfully pushed prompt: {prompt_identifier}")
-            return {"status": "updated", "message": "Prompt pushed successfully.", "prompt_url": prompt_url}
+            return prompt_url
 
         except Exception as e:
             error_msg = str(e)
             if "Nothing to commit" in error_msg:
                 print(f" No changes in prompt: {prompt_identifier}. Skipping push.")
-                return {"status": "skipped", "message": "Prompt not updated — no changes detected."}
+                return "Prompt not updated — no changes detected."
             else:
                 raise e
 
@@ -551,3 +543,5 @@ class NotionLangSmithSync:
         doc.save(output_file)
         print(f"Document saved to {output_file}")
         return output_file
+
+
