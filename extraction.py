@@ -7,11 +7,14 @@ import unicodedata
 import os
 from io import StringIO
 import re
+import itertools
+import csv
 from docx import Document
 from docx.shared import RGBColor
 from typing import Optional
 from pathlib import Path
 from dotenv import load_dotenv
+import json
 
 load_dotenv()
 
@@ -41,7 +44,8 @@ class NotionLangSmithSync:
     "atethiopian": "agent:Maids Line",
 }
 
-    def __init__(self, erp_value_option = 0, function_value_option = 0, update_erp_value_option = 4, langsmith_api_key: str = None, notion_database_id: str = None):
+    def __init__(self, erp_value_option = 0, function_value_option = 0, update_erp_value_option = 4, langsmith_api_key: str = None, notion_database_id: str = None, question_database_id: str = None):
+        self.QUESTION_DATABASE_ID = question_database_id
         self.notion_token = os.getenv("NOTION_TOKEN")
         self.langsmith_api_key = langsmith_api_key
         self.notion = NotionClient(auth=self.notion_token)
@@ -54,8 +58,15 @@ class NotionLangSmithSync:
 
     def get_all_blocks(self, block_id, level=0):
         blocks = []
-        children = self.notion.blocks.children.list(block_id)
+        try:
+            children = self.notion.blocks.children.list(block_id)
+        except Exception as e:
+            print(f"Error fetching children of block {block_id}: {e}")
+            return blocks
+
         for block in children["results"]:
+            if block.get("type") == "ai_block":
+                continue  # skip AI blocks
             block["level"] = level
             blocks.append(block)
             if block.get("has_children", False):
@@ -93,7 +104,7 @@ class NotionLangSmithSync:
 
     def get_function_value_business_description(self, text):
       client = openai.OpenAI(api_key=self.OPENAI_API_KEY)  # Replace with your real key or use environment variable
-
+      print("text passed to get_function_value_business_description: ", text)
       system_prompt = """
         # FUNCTION_VALUE MEANING:
         The FUNCTION_VALUE block contains structured logic or condition-based formulas related to ERP or business processes. It defines how the system should behave in specific functional scenarios.
@@ -198,15 +209,15 @@ class NotionLangSmithSync:
               text = self.extract_text(block["toggle"])
               text_lower = text.lower()
 
-              if "function_value" in text_lower:
+              if "function_value" in text_lower and add_title:
                   ignored_blocks.append(block["id"])
                   formatted_function_value = self.get_function_value(page_id, block["id"])
                   content_lines.append(f"{indent}{formatted_function_value}")
-              elif "update_erp_value" in text_lower:
+              elif "update_erp_value" in text_lower and add_title:
                   ignored_blocks.append(block["id"])
                   formatted_update_erp_value = self.get_update_erp_value(page_id, block["id"])
                   content_lines.append(f"{indent}{formatted_update_erp_value}")
-              else:
+              elif add_title:
                   if text:
                       content_lines.append(f"{indent}{text}")
           else:
@@ -263,6 +274,7 @@ class NotionLangSmithSync:
             val = "@Function Name@"
             # If the function_value_option is 3, fetch the business description
             if self.function_value_option == 3:
+                  print("entered function_value_option == 3")
                   val = self.get_function_value_business_description(self.fetch_all_block_content(page_id, block_id))
                   return "FUNCTION_VALUE_BUSINESS_DESCRIPTION[" + val + "]FUNCTION_VALUE_BUSINESS_DESCRIPTION"  # Return the extracted value
 
@@ -282,15 +294,19 @@ class NotionLangSmithSync:
               blocks = self.get_all_blocks(block_id)
               for block in blocks:
                   if block['type'] == 'paragraph' and 'rich_text' in block['paragraph']:
-                      block_content = self.extract_text(block['paragraph'])
+                        block_content = self.extract_text(block['paragraph'])
 
-                      if self.function_value_option == 0 and block_content.startswith("Value if no condition is met:"):
-                            val = block_content.split("Value if no condition is met:")[1].strip()
-                            return "FUNCTION_VALUE[" + val + "]FUNCTION_VALUE"  # Return the extracted value
+                        if self.function_value_option == 0 and block_content.startswith("Value if no condition is met:"):
+                                val = block_content.split("Value if no condition is met:")[1].strip()
+                                return "FUNCTION_VALUE[" + val + "]FUNCTION_VALUE"  # Return the extracted value
+                        
+                        elif self.function_value_option == 1 and block_content.startswith("Name*:"):
+                                val = block_content.split("Name*:")[1].strip()
+                                return "FUNCTION_VALUE[" + f"@{val}@" + "]FUNCTION_VALUE"  # Return the extracted value
 
-                      elif self.function_value_option == 1 and block_content.startswith("Name*:"):
+                        elif self.function_value_option == 5 and block_content.startswith("Name*:"):
                             val = block_content.split("Name*:")[1].strip()
-                            return "FUNCTION_VALUE[" + f"@{val}@" + "]FUNCTION_VALUE"  # Return the extracted value
+                            return "FUNCTION_VALUE[" + f"{{{val}}}" + "]FUNCTION_VALUE"  # Return the extracted value
 
             return "FUNCTION_VALUE[" + val + "]FUNCTION_VALUE"
         except Exception as e:
@@ -345,21 +361,26 @@ class NotionLangSmithSync:
         try:
             parts = []
             for rt in block_content["rich_text"]:
+                txt = ""
                 if rt.get("type") == "mention":
                     mention = rt.get("mention", {})
                     if mention.get("type") == "page":
                         page_id = mention["page"].get("id")
                         if page_id:
                             formatted_erp_value = self.get_erp_value(page_id)
-                            parts.append(formatted_erp_value)
+                            txt = formatted_erp_value
                         else:
-                            parts.append("{Unknown Page}")
+                            txt = "{Unknown Page}"
                     else:
-                        parts.append("{Mention}")
+                        txt = "{Mention}"
                 elif rt.get("type") == "text":
-                    parts.append(rt["text"].get("content", ""))
+                    txt = rt["text"].get("content", "")
+                if rt.get("annotations") and rt.get("annotations").get("bold"):
+                    txt = f"**{txt}**"
+                parts.append(txt)
             return "".join(parts)
-        except (KeyError, IndexError, TypeError):
+        except (KeyError, IndexError, TypeError) as e:
+            print(f"Error extracting text: {e}")
             return ""
 
     def get_notion_prompt(self, page_id):
@@ -421,6 +442,35 @@ class NotionLangSmithSync:
 
         return prompt
 
+    def get_function_value_options(self, page_id, block_id):
+        all_blocks = self.get_all_blocks(block_id)
+        options = []
+        for block in all_blocks:
+            block_type = block["type"]
+            if block_type == 'callout' and block.get('has_children'):
+                val = self.fetch_all_block_content(page_id, block["id"], False)
+                options.append(val)
+            elif block_type == 'paragraph' and 'rich_text' in block['paragraph']:
+                block_content = self.extract_text(block['paragraph'])
+                if block_content.startswith("Value if no condition is met:"):
+                    val = block_content.split("Value if no condition is met:")[1].strip()
+                    options.append(val)
+        return options
+
+    def list_function_values(self, page_id):
+        all_blocks = self.get_all_blocks(page_id)
+        function_values = {}
+        for block in all_blocks:
+            block_type = block["type"]
+            if block_type == "toggle":
+                text = self.extract_text(block["toggle"])
+                text_lower = text.lower()
+                if "function_value" in text_lower:
+                    options = self.get_function_value_options(page_id, block["id"])
+                    name = self.strip_custom_identifiers(self.get_function_value(page_id, block["id"])).strip("{").strip("}")
+                    function_values[name] = options
+        return function_values
+    
     def strip_custom_identifiers(self, text):
       # Removes FUNCTION_VALUE[], ONLY_ERP_VALUE[], UPDATE_ERP_VALUE[] identifiers, keeping only content inside
       text = re.sub(r"FUNCTION_VALUE(?:_BUSINESS_DESCRIPTION)?\[(.*?)\]FUNCTION_VALUE(?:_BUSINESS_DESCRIPTION)?", r"\1", text, flags=re.DOTALL)
@@ -543,5 +593,108 @@ class NotionLangSmithSync:
         doc.save(output_file)
         print(f"Document saved to {output_file}")
         return output_file
+
+    def erp_extract(self, page_id, output_file="outputs/erp_extract.txt"):
+        prompt_lines = self.get_notion_prompt(page_id)
+        prompt = self.strip_custom_identifiers("\n".join(prompt_lines))
+        with open(output_file, "w", encoding="utf-8") as f:
+            f.write(prompt)
+        print(f"ERP extract saved to {output_file}")
+        return output_file
+
+    #####For permutations of testing cases#########
+    def fetch_test_questions(self, database_id):
+        
+        response = self.notion.databases.query(database_id=database_id)
+        
+        questions = []
+        # Extract questions from the results
+        for result in response.get('results', []):
+            # Get properties from the page
+            properties = result.get('properties', {})
+            
+            # Look for the 'Name' property 
+            name_property = properties.get('Name', {})
+            
+            # Extract the question text based on the property type
+            question_text = None
+            
+            # Handle title property type (typically used for the Name column)
+            title_array = name_property.get('title', [])
+            if title_array:
+                question_text = ''.join([text_obj.get('plain_text', '') for text_obj in title_array])
+                    
+            # Add the question to our list if we found it
+            if question_text:
+                questions.append(question_text)
+                
+        # Check if we found any questions
+        if not questions:
+            print(f"Warning: No questions found in the database.")
+        print(questions)
+        return questions
+    
+    
+    
+    def generate_permutations_csv(self, function_values_dict: dict, output_file: str):
+        # Fetch questions and function values
+        questions = self.fetch_test_questions(self.QUESTION_DATABASE_ID)
+    
+
+        # Get all function names
+        function_names = list(function_values_dict.keys())
+
+        # Create a list of all possible values for each function
+        function_values_lists = [function_values_dict[name] for name in function_names]
+
+        # Open output file for writing with UTF-8 encoding
+        with open(output_file, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+
+            # Write header row
+            header = ["Question"] + function_names
+            writer.writerow(header)
+
+            # Generate all permutations of function values
+            for question in questions:
+                for values in itertools.product(*function_values_lists):
+                    row = [question] + list(values)
+                    writer.writerow(row)
+
+        print(f"CSV file generated successfully at {output_file}")
+        return output_file
+
+    def export_csv_to_langsmith(self, dataset_name, input_file="test_cases.csv"):
+        try:
+            # Check if file exists
+            if not os.path.exists(input_file):
+                return f"Error: File {input_file} not found"
+            
+            # Read the CSV file
+            with open(input_file, "r", encoding="utf-8") as f:
+                reader = csv.reader(f)
+                headers = next(reader)
+
+            # Use the upload_csv method to directly upload the CSV file to LangSmith
+            dataset = self.langsmith.upload_csv(
+                csv_file=input_file,
+                name=dataset_name,
+                description=f"Dataset created from {input_file}",
+                input_keys=headers,  
+                output_keys=[]
+            )
+            
+            # Return the dataset URL - construct it from the dataset ID
+            dataset_id = str(dataset.id) if hasattr(dataset, 'id') else ''
+            return  f"https://smith.langchain.com/datasets/{dataset_id}"
+        
+        except Exception as e:
+            return f"Error: {str(e)}"
+
+if __name__ == "__main__":
+    sync = NotionLangSmithSync(1,3, 4, os.getenv("TEST_LANGSMITH_KEY"), os.getenv("TEST_DATABASE_ID"))
+    prompt = sync.get_notion_prompt("1ee7432eb84380898f01fb798301148c")
+    print(sync.strip_custom_identifiers("\n".join(prompt)))
+    # print(sync.export_csv_to_langsmith("test_cases2"))
 
 
